@@ -4,6 +4,7 @@ import { toast } from '../components/toast.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { formatMoney, formatRange, daysBetween, plural } from '../lib/format.js';
+import { attachPlaces } from '../components/autocomplete.js';
 import { openShare } from '../components/share-dialog.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 
@@ -12,10 +13,10 @@ export const title = 'Mes voyages';
 const STATUS = { preparation: 'En préparation', confirme: 'Confirmé', en_cours: 'En cours', termine: 'Terminé' };
 
 const tripForm = (t = {}) => html`
-  <div class="form-grid">
+  <div class="form-grid compact">
     <div class="field span-2"><label for="f-name">Nom du voyage</label><input class="input" id="f-name" name="name" value="${t.name ?? ''}" placeholder="Escapade à Lisbonne" maxlength="120" required></div>
-    <div class="field span-2"><label for="f-origin">Ville de départ <span class="muted">(pour le trajet en avion)</span></label><input class="input" id="f-origin" name="origin" value="${t.origin ?? ''}" placeholder="Paris" maxlength="120"></div>
-    <div class="field"><label for="f-dest">Destination</label><input class="input" id="f-dest" name="destination" value="${t.destination ?? ''}" placeholder="Lisbonne" maxlength="120" required></div>
+    <div class="field span-2"><label for="f-origin">Ville de départ <span class="muted">(pour le trajet en avion)</span></label><input class="input" id="f-origin" name="origin" value="${t.origin ?? ''}" placeholder="Commencez à écrire : Paris…" maxlength="120"></div>
+    <div class="field"><label for="f-dest">Ville d'arrivée</label><input class="input" id="f-dest" name="destination" value="${t.destination ?? ''}" placeholder="Lisbonne" maxlength="120" required></div>
     <div class="field"><label for="f-country">Pays</label><input class="input" id="f-country" name="country" value="${t.country ?? ''}" placeholder="Portugal" maxlength="120"></div>
     <div class="field"><label for="f-start">Départ</label><input class="input" id="f-start" name="startDate" type="date" value="${t.startDate ?? ''}" required></div>
     <div class="field"><label for="f-end">Retour</label><input class="input" id="f-end" name="endDate" type="date" value="${t.endDate ?? ''}" required></div>
@@ -77,6 +78,12 @@ export async function mount(el, { user } = {}) {
     title: existing ? 'Modifier le voyage' : 'Nouveau voyage',
     content: tripForm(existing),
     submitLabel: existing ? 'Enregistrer' : 'Créer le voyage',
+    onMount: (dlg) => {
+      const f = (id) => dlg.querySelector(id);
+      attachPlaces(f('#f-origin'), { type: 'city', onPick: (it) => { f('#f-origin').value = it.country ? `${it.city}, ${it.country}` : it.city; } });
+      attachPlaces(f('#f-dest'), { type: 'city', onPick: (it) => { if (it.country) f('#f-country').value = it.country; } });
+      attachPlaces(f('#f-country'), { type: 'country' });
+    },
     onSubmit: async (v) => {
       const payload = { ...v, travelers: Number(v.travelers) };
       if (existing) {

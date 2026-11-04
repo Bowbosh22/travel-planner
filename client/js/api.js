@@ -106,5 +106,6 @@ export const api = {
   getWeather: async (id) => (await request('GET', `/trips/${id}/weather`)).weather,
   refreshTripImage: (id) => request('POST', `/trips/${id}/image`),
   geocodeTrip: async (id) => (await request('POST', `/trips/${id}/geo`)).geo,
+  suggestPlaces: async (q, type) => (await request('GET', `/geo/suggest?type=${type}&q=${encodeURIComponent(q)}`)).results,
   geocodeBooking: (id) => request('POST', `/bookings/${id}/geocode`),
 };

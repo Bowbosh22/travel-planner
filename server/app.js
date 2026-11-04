@@ -11,6 +11,7 @@ import { createFxService } from './fx/rates.js';
 import { createDocumentRoutes } from './routes/documents.js';
 import { createGeoRoutes } from './routes/geo.js';
 import { createGeocoder } from './geo/nominatim.js';
+import { createSuggest } from './geo/suggest.js';
 import { createPhotoFinder } from './images/photos.js';
 import { createWeather } from './weather/openmeteo.js';
 import { createWeatherRoutes } from './routes/weather.js';
@@ -20,7 +21,7 @@ import { rateLimit } from './ratelimit.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // importOptions : réservé aux tests (autoriser un serveur local). Jamais piloté par une variable d'environnement.
-export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), images = createPhotoFinder(), weather = createWeather(), limits = {} } = {}) {
+export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), suggest = createSuggest(), images = createPhotoFinder(), weather = createWeather(), limits = {} } = {}) {
   const maxRegistrations = limits.registrationsPerHour ?? 10; // réglable pour les tests uniquement
   const app = express();
   app.use(compression()); // pages, scripts et données compressés : chargement bien plus rapide, surtout sur mobile
@@ -45,6 +46,9 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
       },
     })
   );
+
+  // Réveil léger pour un service de « ping » : ne touche pas la base (qui peut ainsi se mettre en veille).
+  app.get('/api/ping', (_req, res) => res.type('text/plain').send('ok'));
 
   app.get('/api/health', async (_req, res) => {
     try {
@@ -83,7 +87,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
   api.use(createInviteRoutes(pool, auth.requireUser));
   // Filet de sécurité : au plus 300 écritures par minute et par utilisateur connecté.
   api.use(auth.requireUser, (req, res, next) => (['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? next() : writeLimit(req, res, next)));
-  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx, images), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder), createWeatherRoutes(pool, weather));
+  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx, images), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder, suggest), createWeatherRoutes(pool, weather));
 
   api.use((_req, res) => res.status(404).json({ error: 'Introuvable.' }));
   // JSON invalide, etc. : jamais de trace technique envoyée au navigateur.

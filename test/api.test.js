@@ -64,7 +64,7 @@ before(async () => {
   pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, images: fakeImages, weather: { get: async (d) => (d === 'Nullepart' ? null : { tempC: 17, label: 'Peu nuageux', kind: 'partly', timezone: 'Europe/Lisbon' }) }, limits: { registrationsPerHour: 10_000 }, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
+  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, images: fakeImages, suggest: async (q, type) => (q === 'boom' ? Promise.reject(new Error('x')) : type === 'country' ? [{ country: 'Portugal' }] : [{ city: 'Lisbonne', region: 'Lisbonne', country: 'Portugal' }]), weather: { get: async (d) => (d === 'Nullepart' ? null : { tempC: 17, label: 'Peu nuageux', kind: 'partly', timezone: 'Europe/Lisbon' }) }, limits: { registrationsPerHour: 10_000 }, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
@@ -749,4 +749,17 @@ test('mot de passe oublié : essais limités', { skip }, async () => {
   let last;
   for (let i = 0; i < 6; i++) last = await x.post('/api/auth/reset-password', { email: 'rec2@test.fr', code: 'ZZZZZ-ZZZZZ', password: 'nouveau-mot-de-passe' });
   assert.equal(last.status, 429);
+});
+
+test('suggestions de villes et pays : connexion requise, résultats, panne = liste vide', { skip }, async () => {
+  assert.equal((await client().get('/api/geo/suggest?q=lis')).status, 401);
+  const c = client();
+  assert.equal((await signup(c, `suggest-${Date.now()}@test.fr`)).status, 201);
+  const city = await c.get('/api/geo/suggest?type=city&q=lis');
+  assert.equal(city.status, 200);
+  assert.deepEqual(city.body.results[0], { city: 'Lisbonne', region: 'Lisbonne', country: 'Portugal' });
+  assert.deepEqual((await c.get('/api/geo/suggest?type=country&q=port')).body.results, [{ country: 'Portugal' }]);
+  const down = await c.get('/api/geo/suggest?q=boom');
+  assert.equal(down.status, 200);
+  assert.deepEqual(down.body.results, []);
 });

@@ -4,8 +4,18 @@ import { rateLimit } from '../ratelimit.js';
 import { geoKey } from './trips.js';
 import { canAccess } from '../access.js';
 
-export function createGeoRoutes(pool, geocoder) {
+export function createGeoRoutes(pool, geocoder, suggest) {
   const router = express.Router();
+
+  // Suggestions de villes / pays pendant la saisie (le formulaire de voyage). Jamais d'erreur bloquante : liste vide en cas de panne.
+  router.get('/geo/suggest', rateLimit({ max: 120, windowMs: 60 * 1000, message: 'Trop de recherches. Réessayez dans une minute.' }), async (req, res) => {
+    try {
+      const results = suggest ? await suggest(String(req.query.q ?? ''), req.query.type === 'country' ? 'country' : 'city') : [];
+      res.json({ results });
+    } catch {
+      res.json({ results: [], unavailable: true });
+    }
+  });
 
   // Calcule les coordonnées du lieu d'une réservation (une seule fois par texte de lieu, résultat mémorisé).
   router.post('/bookings/:id/geocode', rateLimit({ max: 70, windowMs: 60 * 1000, message: 'Trop de recherches de lieux. Réessayez dans une minute.' }), async (req, res, next) => {
