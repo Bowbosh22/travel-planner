@@ -500,3 +500,8 @@ svg { flex: none; }
 .rail .nav-item svg { width: 17px; height: 17px; }
 .rail .sidebar-spacer { flex: none; min-height: 0; height: 6px; }
 @media (max-height: 560px) { .sidebar { align-items: flex-start; overflow-y: auto; pointer-events: auto; } }
+
+/* Avertissement de budget cliquable → onglet Réservations */
+.toast-link { cursor: pointer; text-decoration: underline; }
+.budget-banner .bb-link { color: inherit; text-decoration: none; cursor: pointer; }
+.budget-banner .bb-link:hover strong { text-decoration: underline; }
