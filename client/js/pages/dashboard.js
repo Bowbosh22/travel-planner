@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { summarize, tripTiming } from '../services/budget.js';
 import { createCharts, seriesColor } from '../components/charts.js';
-import { toast } from '../components/toast.js';
+import { openImport } from '../components/import-flow.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { formatEUR, formatPercent, formatRange, daysBetween, plural } from '../lib/format.js';
@@ -101,7 +101,7 @@ export async function mount(el, { user }) {
 
   // Actions
   const onClick = (e) => {
-    if (e.target.closest('[data-action="import"]')) toast("L'import par lien arrive à l'étape 4.");
+    if (e.target.closest('[data-action="import"]')) openImport();
   };
   el.addEventListener('click', onClick);
   el.querySelector('#trip-select').addEventListener('change', (e) => {

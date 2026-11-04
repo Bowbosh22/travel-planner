@@ -52,6 +52,9 @@ export const api = {
   updateTrip: async (id, trip) => (await request('PUT', `/trips/${id}`, trip)).trip,
   deleteTrip: (id) => request('DELETE', `/trips/${id}`),
 
+  // Import par lien : renvoie ce qui est écrit sur la page, sans rien inventer
+  importUrl: async (url) => (await request('POST', '/import', { url })).result,
+
   // Réservations et paiements
   listBookings: async (tripId) => (await request('GET', `/trips/${tripId}/bookings`)).bookings,
   createBooking: async (tripId, b) => (await request('POST', `/trips/${tripId}/bookings`, b)).booking,

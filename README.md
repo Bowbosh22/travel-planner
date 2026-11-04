@@ -2,7 +2,7 @@
 
 Application web pour organiser ses voyages et suivre son budget en euros.
 
-**État : étape 3 sur 8** — comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
+**État : étape 4 sur 8** — import intelligent par lien, comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
 
 ## Lancer en local
 
@@ -18,6 +18,14 @@ Les tables sont créées automatiquement au démarrage (`server/migrations/`). P
 Tests : `npm test` (calculs budgétaires). Les tests de l'API tournent aussi si vous fournissez une base **vide dédiée aux tests** :
 `TEST_DATABASE_URL=postgres://... npm test` (⚠ cette base est effacée à chaque lancement).
 
+## Import par lien
+
+Bouton « Importer depuis un lien » : l'adresse d'une page (hôtel, restaurant, activité, vol...) est lue par le serveur, qui en extrait **uniquement ce qui y est écrit** (données structurées JSON-LD, puis Open Graph, puis titre). Un écran de vérification s'affiche avant tout ajout ; un champ introuvable reste vide, rien n'est deviné.
+
+- Prix dans une autre devise : signalé, jamais pris pour des euros (conversion à l'étape 5).
+- Captcha, connexion obligatoire, limite d'accès : le site est signalé comme non lisible, **jamais contourné**. Beaucoup de grandes plateformes de réservation refusent les robots : saisissez alors la réservation à la main (le lien peut être conservé).
+- Sécurité : seules les adresses http/https des ports 80/443 sont acceptées ; réseau privé, localhost et adresses de métadonnées cloud sont refusés à chaque redirection et à la connexion réelle ; taille (1,5 Mo), durée (8 s) et redirections (4) limitées ; 10 analyses par minute et par utilisateur.
+
 ## Structure
 
 ```
@@ -25,6 +33,8 @@ server/index.js          Démarrage : migrations puis serveur
 server/app.js            Express : sécurité (helmet, CSRF), API, fichiers statiques
 server/auth.js           Inscription, connexion, sessions (cookie httpOnly), anti force brute
 server/routes/trips.js   Voyages, réservations, paiements (toujours filtrés par utilisateur)
+server/routes/import.js  Route d'import par lien
+server/importer/         Lecture sécurisée (anti-SSRF), extraction JSON-LD / Open Graph
 server/migrations/       Schéma SQL versionné
 client/
   index.html             Coquille de l'application
@@ -37,7 +47,10 @@ client/
   js/components/         Navigation, graphiques Chart.js, notifications
   js/pages/              Dashboard, Paramètres (Apparence), sections à venir
 test/budget.test.js      Tests des règles budgétaires
-test/api.test.js         Tests de l'API (auth, isolation entre comptes, paiements)
+test/api.test.js         Tests de l'API (auth, isolation entre comptes, paiements, import)
+test/ssrf.test.js        Adresses interdites (privées, locales, écritures déguisées)
+test/extract.test.js     Extraction des informations d'une page
+test/import.test.js      Import sur de faux sites (captcha, redirections, pages géantes...)
 ```
 
 ## Déploiement gratuit : Render + Neon

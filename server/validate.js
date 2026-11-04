@@ -56,12 +56,36 @@ export function validateTrip(body = {}) {
   return { value: { ...v, startDate: body.startDate, endDate: body.endDate, travelers, planStatus } };
 }
 
+// Champs facultatifs : absent (undefined) = inchangé ; vide ou null = effacé.
+const optional = (v, parse) => {
+  if (v === undefined) return { value: undefined };
+  if (v === null || (typeof v === 'string' && v.trim() === '')) return { value: null };
+  return parse(v);
+};
+
+const sourceUrl = (v) => {
+  if (typeof v !== 'string' || v.length > 500) return { error: 'Le lien est invalide (500 caractères maximum).' };
+  let u;
+  try {
+    u = new URL(v.trim());
+  } catch {
+    return { error: 'Le lien est invalide.' };
+  }
+  if ((u.protocol !== 'http:' && u.protocol !== 'https:') || u.username || u.password) return { error: 'Le lien doit commencer par http:// ou https://.' };
+  return { value: u.href };
+};
+
 export function validateBooking(body = {}) {
   const r = collect({
     name: text(body.name, 'Le nom de la réservation'),
     amountEur: money(body.amountEur, 'Le montant', { nullable: true }),
+    location: optional(body.location, (v) => text(v, 'Le lieu', { max: 200 })),
+    sourceUrl: optional(body.sourceUrl, sourceUrl),
+    startsOn: optional(body.startsOn, (v) => (isIsoDate(v) ? { value: v } : { error: 'La date de début est invalide.' })),
+    endsOn: optional(body.endsOn, (v) => (isIsoDate(v) ? { value: v } : { error: 'La date de fin est invalide.' })),
   });
   if (r.error) return r;
+  if (r.value.startsOn && r.value.endsOn && r.value.endsOn < r.value.startsOn) return { error: 'La date de fin ne peut pas être avant le début.' };
   if (!CATEGORIES.includes(body.category)) return { error: 'Catégorie invalide.' };
   const status = body.status ?? 'a_reserver';
   if (!BOOKING_STATUSES.includes(status)) return { error: 'Statut de réservation invalide.' };

@@ -15,14 +15,14 @@ function tripOut(r, today = todayIso()) {
 }
 
 const BOOKING_SELECT = `
-  SELECT b.id, b.trip_id, b.category, b.name, b.amount_eur, b.status,
+  SELECT b.id, b.trip_id, b.category, b.name, b.amount_eur, b.status, b.source_url, b.starts_on, b.ends_on, b.location,
     COALESCE(json_agg(json_build_object('id', p.id, 'date', to_char(p.paid_on, 'YYYY-MM-DD'), 'amountEur', p.amount_eur::float8)
       ORDER BY p.paid_on, p.created_at) FILTER (WHERE p.id IS NOT NULL), '[]') AS payments
   FROM bookings b
   JOIN trips t ON t.id = b.trip_id
   LEFT JOIN payments p ON p.booking_id = b.id`;
 
-const bookingOut = (r) => ({ id: r.id, tripId: r.trip_id, category: r.category, name: r.name, amountEur: r.amount_eur, status: r.status, payments: r.payments });
+const bookingOut = (r) => ({ id: r.id, tripId: r.trip_id, category: r.category, name: r.name, amountEur: r.amount_eur, status: r.status, sourceUrl: r.source_url, startsOn: r.starts_on, endsOn: r.ends_on, location: r.location, payments: r.payments });
 
 export function createTripRoutes(pool) {
   const router = express.Router();
@@ -99,8 +99,9 @@ export function createTripRoutes(pool) {
       if (!owned.rowCount) return notFound(res);
       const v = p.value;
       const { rows } = await pool.query(
-        'INSERT INTO bookings (trip_id, category, name, amount_eur, status) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-        [req.params.id, v.category, v.name, v.amountEur, v.status]
+        `INSERT INTO bookings (trip_id, category, name, amount_eur, status, source_url, starts_on, ends_on, location)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [req.params.id, v.category, v.name, v.amountEur, v.status, v.sourceUrl ?? null, v.startsOn ?? null, v.endsOn ?? null, v.location ?? null]
       );
       res.status(201).json({ booking: await loadBooking(rows[0].id, req.user.id) });
     } catch (err) { next(err); }
@@ -116,7 +117,15 @@ export function createTripRoutes(pool) {
       const paid = current.payments.reduce((s, x) => s + x.amountEur, 0);
       if (paid > 0 && v.amountEur === null) return bad(res, 'Cette réservation a déjà des paiements : le montant est obligatoire.');
       if (v.amountEur !== null && v.amountEur < paid - 0.001) return bad(res, `Le montant ne peut pas être inférieur aux paiements déjà enregistrés (${eur(paid)}).`);
-      await pool.query('UPDATE bookings SET category=$2, name=$3, amount_eur=$4, status=$5 WHERE id=$1', [req.params.id, v.category, v.name, v.amountEur, v.status]);
+      // Détails absents de la requête : on garde les valeurs actuelles.
+      const pick = (key) => (v[key] === undefined ? current[key] : v[key]);
+      const startsOn = pick('startsOn');
+      const endsOn = pick('endsOn');
+      if (startsOn && endsOn && endsOn < startsOn) return bad(res, 'La date de fin ne peut pas être avant le début.');
+      await pool.query(
+        'UPDATE bookings SET category=$2, name=$3, amount_eur=$4, status=$5, source_url=$6, starts_on=$7, ends_on=$8, location=$9 WHERE id=$1',
+        [req.params.id, v.category, v.name, v.amountEur, v.status, pick('sourceUrl'), startsOn, endsOn, pick('location')]
+      );
       res.json({ booking: await loadBooking(req.params.id, req.user.id) });
     } catch (err) { next(err); }
   });

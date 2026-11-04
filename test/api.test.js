@@ -171,3 +171,54 @@ test('thème enregistré sur le compte', { skip }, async () => {
   assert.deepEqual((await c.get('/api/auth/me')).body.user.theme, { color: 'marron', mode: 'sombre' });
   assert.equal((await c.raw('PATCH', '/api/auth/theme', { color: 'rouge' })).status, 400);
 });
+
+test('import : connexion requise, adresse invalide et adresse interne refusées', { skip }, async () => {
+  assert.equal((await client().post('/api/import', { url: 'https://exemple.com' })).status, 401);
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  assert.equal((await c.post('/api/import', { url: 'pas une adresse' })).status, 400);
+  assert.equal((await c.post('/api/import', { url: 'file:///etc/passwd' })).status, 400);
+  const internal = await c.post('/api/import', { url: 'http://169.254.169.254/latest/meta-data/' });
+  assert.equal(internal.status, 422);
+  assert.equal(internal.body.code, 'blocked');
+  assert.equal((await c.post('/api/import', {})).status, 400);
+});
+
+test('import : 10 analyses par minute au maximum', { skip }, async () => {
+  const c = client();
+  await signup(c, 'rate@test.fr');
+  let last;
+  for (let i = 0; i < 11; i += 1) last = await c.post('/api/import', { url: 'http://127.0.0.1/' });
+  assert.equal(last.status, 429);
+});
+
+test('réservation : lieu, dates et lien enregistrés, conservés à la modification, validés', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = (await c.post('/api/trips', trip)).body.trip;
+  const created = await c.post(`/api/trips/${t.id}/bookings`, {
+    category: 'logement', name: 'Hôtel', amountEur: 100, status: 'reserve',
+    location: 'Lisbonne', startsOn: '2026-12-12', endsOn: '2026-12-19', sourceUrl: 'https://hotel.exemple.com/x?a=1',
+  });
+  assert.equal(created.status, 201);
+  const b = created.body.booking;
+  assert.equal(b.location, 'Lisbonne');
+  assert.equal(b.startsOn, '2026-12-12');
+  assert.equal(b.sourceUrl, 'https://hotel.exemple.com/x?a=1');
+
+  // Modification sans les détails : ils sont conservés.
+  const kept = await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel 2', amountEur: 100, status: 'reserve' });
+  assert.equal(kept.body.booking.location, 'Lisbonne');
+  assert.equal(kept.body.booking.endsOn, '2026-12-19');
+  // Champ vide : effacé.
+  const cleared = await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel 2', amountEur: 100, status: 'reserve', location: '' });
+  assert.equal(cleared.body.booking.location, null);
+
+  const bad = (extra) => c.post(`/api/trips/${t.id}/bookings`, { category: 'autres', name: 'X', ...extra });
+  assert.equal((await bad({ sourceUrl: 'javascript:alert(1)' })).status, 400);
+  assert.equal((await bad({ sourceUrl: 'ftp://exemple.com' })).status, 400);
+  assert.equal((await bad({ sourceUrl: 'https://u:p@exemple.com' })).status, 400);
+  assert.equal((await bad({ startsOn: '2026-02-30' })).status, 400);
+  assert.equal((await bad({ startsOn: '2026-12-20', endsOn: '2026-12-10' })).status, 400);
+  assert.equal((await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'H', amountEur: 100, endsOn: '2026-01-01' })).status, 400, 'fin avant le début déjà enregistré');
+});

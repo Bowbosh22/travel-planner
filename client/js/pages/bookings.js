@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { openDialog, confirmDialog } from '../components/dialog.js';
+import { openImport } from '../components/import-flow.js';
 import { toast } from '../components/toast.js';
 import { CATEGORIES, summarize } from '../services/budget.js';
 import { html, raw } from '../lib/html.js';
@@ -27,6 +28,10 @@ const bookingForm = (b = {}) => html`
     <div class="field span-2"><label for="b-amount">Montant total (€)</label>
       <input class="input" id="b-amount" name="amountEur" inputmode="decimal" value="${b.amountEur ?? ''}" placeholder="Laissez vide si le prix n'est pas connu">
       <small class="hint">Réservé et payé sont suivis séparément : ajoutez les paiements ensuite.</small></div>
+    <div class="field span-2"><label for="b-loc">Lieu <span class="opt">(facultatif)</span></label><input class="input" id="b-loc" name="location" value="${b.location ?? ''}" maxlength="200"></div>
+    <div class="field"><label for="b-start">Du</label><input class="input" id="b-start" name="startsOn" type="date" value="${b.startsOn ?? ''}"></div>
+    <div class="field"><label for="b-end">Au</label><input class="input" id="b-end" name="endsOn" type="date" value="${b.endsOn ?? ''}"></div>
+    <div class="field span-2"><label for="b-url">Lien <span class="opt">(facultatif)</span></label><input class="input" id="b-url" name="sourceUrl" type="url" value="${b.sourceUrl ?? ''}" maxlength="500" placeholder="https://..."></div>
   </div>`;
 
 export async function mount(el) {
@@ -50,6 +55,7 @@ export async function mount(el) {
       <li class="booking ${b.status === 'annule' ? 'is-cancelled' : ''}" data-id="${b.id}">
         <div class="booking-main">
           <div class="booking-name">${b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span></div>
+          ${b.location || b.startsOn || b.sourceUrl ? html`<div class="booking-sub muted">${[b.location, b.startsOn ? (b.endsOn && b.endsOn !== b.startsOn ? `${formatLongDate(b.startsOn)} → ${formatLongDate(b.endsOn)}` : formatLongDate(b.startsOn)) : null].filter(Boolean).join(' · ')}${b.sourceUrl ? html`${b.location || b.startsOn ? ' · ' : ''}<a class="src-link" href="${b.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow">Voir le lien</a>` : ''}</div>` : ''}
           ${b.amountEur === null
             ? html`<div class="muted booking-sub">Prix à renseigner</div>`
             : html`<div class="booking-sub muted">${formatMoney(paid)} payés sur ${formatMoney(b.amountEur)}</div>
@@ -74,6 +80,7 @@ export async function mount(el) {
         <div class="page-actions">
           <label class="sr-only" for="trip-select">Voyage</label>
           <select id="trip-select" class="select">${trips.map((t) => html`<option value="${t.id}" ${t.id === trip.id ? raw('selected') : ''}>${t.name}</option>`)}</select>
+          <button type="button" class="btn btn-soft" data-act="import">Importer un lien</button>
           <button type="button" class="btn btn-primary" data-act="new">${icon('plus', 16)}Ajouter</button>
         </div>
       </header>
@@ -96,7 +103,7 @@ export async function mount(el) {
     render();
   };
 
-  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, amountEur: v.amountEur?.trim() === '' ? null : v.amountEur });
+  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, amountEur: v.amountEur?.trim() === '' ? null : v.amountEur, location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl });
 
   const openBookingForm = (existing) => openDialog({
     title: existing ? 'Modifier la réservation' : 'Nouvelle réservation',
@@ -158,10 +165,11 @@ export async function mount(el) {
     const b = bookings.find((x) => x.id === id);
     switch (btn.dataset.act) {
       case 'new': return openBookingForm();
+      case 'import': return openImport();
       case 'edit': return openBookingForm(b);
       case 'payments': return openPayments(id);
       case 'duplicate':
-        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amountEur: b.amountEur })
+        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amountEur: b.amountEur, location: b.location, startsOn: b.startsOn, endsOn: b.endsOn, sourceUrl: b.sourceUrl })
           .then(() => { toast('Réservation dupliquée (sans paiement).'); return load(); })
           .catch((err) => toast(err.message));
       case 'delete':

@@ -2,7 +2,7 @@ import { NAV } from './nav.js';
 import { api } from './api.js';
 import { applyTheme, setTheme, watchSystemTheme } from './theme.js';
 import { renderSidebar, renderTabbar, openMoreSheet, closeSheet } from './components/nav-ui.js';
-import { toast } from './components/toast.js';
+import { openImport } from './components/import-flow.js';
 import * as dashboard from './pages/dashboard.js';
 import * as trips from './pages/trips.js';
 import * as bookings from './pages/bookings.js';
@@ -57,7 +57,7 @@ async function render() {
 
   renderSidebar(sidebar, path);
   renderTabbar(tabbar, path, {
-    onImport: () => toast("L'import par lien arrive à l'étape 4."),
+    onImport: () => openImport(),
     onMore: () => openMoreSheet(sheet, path),
   });
 

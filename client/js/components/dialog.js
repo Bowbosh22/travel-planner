@@ -2,6 +2,7 @@
 import { html } from '../lib/html.js';
 
 // content : html`...` (déjà échappé). onSubmit(values, dialog) peut lancer une Error : son message s'affiche dans la boîte.
+// Elle peut aussi renvoyer false pour rester ouverte.
 export function openDialog({ title, content = '', submitLabel = 'Enregistrer', cancelLabel = 'Annuler', danger = false, onSubmit, onMount }) {
   const dlg = document.createElement('dialog');
   dlg.className = 'dialog';
@@ -33,8 +34,10 @@ export function openDialog({ title, content = '', submitLabel = 'Enregistrer', c
     button.disabled = true;
     showError('');
     try {
-      await onSubmit(Object.fromEntries(new FormData(form)), dlg);
-      close();
+      // onSubmit renvoie false pour garder la boîte ouverte (étape suivante d'un assistant).
+      const keepOpen = (await onSubmit(Object.fromEntries(new FormData(form)), dlg)) === false;
+      if (keepOpen) button.disabled = false;
+      else close();
     } catch (err) {
       showError(err.message || 'Une erreur est survenue.');
       button.disabled = false;
