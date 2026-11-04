@@ -1,12 +1,24 @@
-// Fonds de carte gratuits, sans clé : CARTO (plan clair / sombre, suit le thème) et Esri (satellite).
-const CARTO = (style) => `https://{s}.basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}{r}.png`;
-const OSM_CREDIT = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>';
-const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-const ESRI_CREDIT = 'Imagerie © Esri, Maxar, Earthstar Geographics';
+// Fonds de carte gratuits, sans clé : Esri « gris » (clair / sombre, suit le thème), satellite Esri,
+// et OpenStreetMap en secours automatique si les tuiles ne se chargent pas.
+const ESRI = (path) => `https://server.arcgisonline.com/ArcGIS/rest/services/${path}/MapServer/tile/{z}/{y}/{x}`;
+const ESRI_CREDIT = 'Fond © Esri, HERE, Garmin, OpenStreetMap contributors';
+const OSM = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_CREDIT = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>';
 const opts = { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin' };
 
 const isDark = () => document.documentElement.dataset.mode === 'dark';
-const plan = (L) => L.tileLayer(CARTO(isDark() ? 'dark_all' : 'voyager'), { ...opts, subdomains: 'abcd', attribution: OSM_CREDIT });
+const osm = (L) => L.tileLayer(OSM, { ...opts, attribution: OSM_CREDIT });
+const plan = (L) => {
+  const layer = L.tileLayer(ESRI(isDark() ? 'Canvas/World_Dark_Gray_Base' : 'Canvas/World_Light_Gray_Base'), { ...opts, maxNativeZoom: 16, attribution: ESRI_CREDIT });
+  let errors = 0;
+  layer.on('tileerror', () => { // service bloqué ou indisponible : on bascule sur OpenStreetMap
+    if (++errors !== 4 || !layer._map) return;
+    const map = layer._map;
+    map.removeLayer(layer);
+    osm(L).addTo(map).bringToBack();
+  });
+  return layer;
+};
 
 // Ajoute le fond « Plan » (adapté au thème). Avec { switcher: true } : bouton Plan / Satellite.
 export function addBasemap(L, map, { switcher = false } = {}) {
@@ -15,10 +27,8 @@ export function addBasemap(L, map, { switcher = false } = {}) {
   window.addEventListener('themechange', onTheme);
   map.on('unload', () => window.removeEventListener('themechange', onTheme));
   if (switcher) {
-    const sat = L.tileLayer(ESRI, { ...opts, maxZoom: 18, attribution: ESRI_CREDIT });
-    const ctl = L.control.layers({ 'Plan': base, 'Satellite': sat }, null, { position: 'topright', collapsed: true }).addTo(map);
-    map.on('baselayerchange', (e) => { if (e.layer === sat) return; base = e.layer; });
-    return ctl;
+    const sat = L.tileLayer(ESRI('World_Imagery'), { ...opts, maxNativeZoom: 18, attribution: 'Imagerie © Esri, Maxar, Earthstar Geographics' });
+    return L.control.layers({ 'Plan': base, 'Satellite': sat }, null, { position: 'topright', collapsed: true }).addTo(map);
   }
   return null;
 }
