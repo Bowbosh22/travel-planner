@@ -40,7 +40,15 @@ test/budget.test.js      Tests des règles budgétaires
 test/api.test.js         Tests de l'API (auth, isolation entre comptes, paiements)
 ```
 
-## Déploiement Railway
+## Déploiement gratuit : Render + Neon
+
+1. **Base** : créer un projet sur neon.com (sans carte bancaire), copier l'adresse de connexion (« Connection string », elle contient `sslmode=require`).
+2. **Application** : sur render.com, New → Web Service → choisir le dépôt GitHub. Build : `npm install`, Start : `npm start`, offre **Free**.
+3. Variables d'environnement : `DATABASE_URL` (adresse Neon), `NODE_ENV=production`, et plus tard `ALLOW_REGISTRATION=false`.
+
+Limites du gratuit : l'application s'endort après 15 min sans visite (la première page met environ une minute à se réveiller) et la base Neon se met en veille après 5 min d'inactivité (réveil en une ou deux secondes). Vos données ne sont pas effacées.
+
+## Déploiement Railway (payant)
 
 1. Dans le projet Railway, ajouter un service **PostgreSQL** (New → Database → PostgreSQL).
 2. Dans le service de l'application, onglet Variables :
