@@ -140,3 +140,7 @@ Une mini-carte de l'accueil affiche l'heure locale et la météo actuelle de la 
 ## Carte du voyage (accueil)
 
 Deux vues sur la même carte : **Trajet aérien** (arc de grand cercle entre la ville de départ et la destination, avec distance et durée de vol approximatives) et **Pays** (carte du pays de destination, avec les lieux de vos réservations). La ville de départ se renseigne dans « Mes voyages » ; sans elle, seule la vue Pays est complète. Coordonnées calculées avec Nominatim/OpenStreetMap (gratuit) puis mémorisées par voyage (migration 008).
+
+## Personnes qui voyagent avec vous
+
+Dans la mini-carte « Voyage avec » de l'accueil, le bouton « + » permet d'ajouter une personne par son prénom (Entrée pour valider, Échap pour annuler) ; le × retire un prénom, et « +N » déplie la liste. 20 prénoms au maximum, sans doublon. Le nombre de voyageurs du voyage s'ajuste automatiquement (il ne descend jamais sous 1 + le nombre de prénoms). Migration 009.

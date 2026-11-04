@@ -1,5 +1,5 @@
 import express from 'express';
-import { UUID, validateBooking, validatePayment, validateTrip } from '../validate.js';
+import { UUID, validateBooking, validatePayment, validateTrip, validateCompanions } from '../validate.js';
 import { FxError, round2, toEur } from '../fx/rates.js';
 
 const eur = (n) => `${n.toFixed(2).replace('.', ',')} €`;
@@ -15,7 +15,7 @@ function tripOut(r, today = todayIso()) {
   return {
     id: r.id, name: r.name, destination: r.destination, country: r.country,
     startDate: r.start_date, endDate: r.end_date, travelers: r.travelers,
-    budgetEur: r.budget_eur, planStatus: r.plan_status, status, imageUrl: r.image_url, imageCredit: r.image_credit, photos: r.photos ?? [], origin: r.origin ?? '',
+    budgetEur: r.budget_eur, planStatus: r.plan_status, status, imageUrl: r.image_url, imageCredit: r.image_credit, photos: r.photos ?? [], origin: r.origin ?? '', companions: r.companions ?? [],
     geo: r.geo_key === geoKey(r) ? r.geo : null, geoDone: r.geo_key === geoKey(r),
   };
 }
@@ -123,6 +123,19 @@ export function createTripRoutes(pool, fx, images) {
       if (!rows[0]) return notFound(res);
       const row = before && (before.destination !== v.destination || before.country !== v.country || !before.image_url) ? await refreshImage(rows[0].id, v.destination, v.country) : rows[0];
       res.json({ trip: tripOut(row) });
+    } catch (err) { next(err); }
+  });
+
+  // Personnes qui voyagent avec vous (prénoms). Le nombre de voyageurs suit : il ne descend jamais sous 1 + nombre de prénoms.
+  router.put('/trips/:id/companions', async (req, res, next) => {
+    try {
+      const p = validateCompanions(req.body);
+      if (p.error) return bad(res, p.error);
+      const { rows } = await pool.query(
+        'UPDATE trips SET companions=$3::jsonb, travelers=GREATEST(travelers, $4) WHERE id=$1 AND user_id=$2 RETURNING *',
+        [req.params.id, req.user.id, JSON.stringify(p.value), 1 + p.value.length]
+      );
+      rows[0] ? res.json({ trip: tripOut(rows[0]) }) : notFound(res);
     } catch (err) { next(err); }
   });
 

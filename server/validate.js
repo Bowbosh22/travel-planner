@@ -123,3 +123,17 @@ export function validateRegistration(body = {}) {
   if (password.length > 200) return { error: 'Le mot de passe est trop long.' };
   return { value: { firstName: first.value, email, password } };
 }
+
+// Prénoms des personnes qui voyagent avec l'utilisateur : 20 au maximum, 40 caractères chacun, sans doublon.
+export function validateCompanions(body = {}) {
+  if (!Array.isArray(body.names)) return { error: 'La liste des prénoms est invalide.' };
+  if (body.names.length > 20) return { error: '20 personnes au maximum.' };
+  const names = [];
+  for (const raw of body.names) {
+    const n = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : '';
+    if (!n) return { error: 'Un prénom ne peut pas être vide.' };
+    if (n.length > 40) return { error: 'Un prénom est trop long (40 caractères maximum).' };
+    if (!names.some((x) => x.toLowerCase() === n.toLowerCase())) names.push(n);
+  }
+  return { value: names };
+}

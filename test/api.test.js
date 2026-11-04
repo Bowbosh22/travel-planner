@@ -611,3 +611,26 @@ test('carte de l\'accueil : départ, destination et emprise du pays, mémorisés
   await signup(other, 'geo-trip2@test.fr');
   assert.equal((await other.post(`/api/trips/${t.id}/geo`)).status, 404);
 });
+
+test('personnes qui voyagent avec moi : prénoms nettoyés, nombre de voyageurs ajusté, propriétaire seulement', { skip }, async () => {
+  const c = client();
+  await signup(c, 'people@test.fr');
+  const t = (await c.post('/api/trips', { ...trip, travelers: 1 })).body.trip;
+  assert.deepEqual(t.companions, []);
+  const r = await c.raw('PUT', `/api/trips/${t.id}/companions`, { names: ['  Sarah ', 'Karim', 'sarah', 'Jean   Luc'] });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.trip.companions, ['Sarah', 'Karim', 'Jean Luc']);
+  assert.equal(r.body.trip.travelers, 4, '1 + 3 prénoms');
+  const less = (await c.raw('PUT', `/api/trips/${t.id}/companions`, { names: ['Sarah'] })).body.trip;
+  assert.equal(less.travelers, 4, 'ne redescend pas tout seul');
+  assert.deepEqual((await c.get('/api/trips')).body.trips.find((x) => x.id === t.id).companions, ['Sarah']);
+  const html = (await c.raw('PUT', `/api/trips/${t.id}/companions`, { names: ['<b>Zoé</b>'] })).body.trip;
+  assert.deepEqual(html.companions, ['<b>Zoé</b>'], 'stocké tel quel (échappé à l\'affichage)');
+  assert.equal((await c.raw('PUT', `/api/trips/${t.id}/companions`, { names: ['  '] })).status, 400);
+  assert.equal((await c.raw('PUT', `/api/trips/${t.id}/companions`, { names: ['x'.repeat(41)] })).status, 400);
+  assert.equal((await c.raw('PUT', `/api/trips/${t.id}/companions`, { names: Array.from({ length: 21 }, (_, i) => `P${i}`) })).status, 400);
+  assert.equal((await c.raw('PUT', `/api/trips/${t.id}/companions`, { names: 'Sarah' })).status, 400);
+  const other = client();
+  await signup(other, 'people2@test.fr');
+  assert.equal((await other.raw('PUT', `/api/trips/${t.id}/companions`, { names: ['Intrus'] })).status, 404);
+});

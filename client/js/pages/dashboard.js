@@ -79,7 +79,24 @@ export async function mount(el, { user }) {
   const startAt = photos.length ? Math.floor(Math.random() * photos.length) : 0; // une photo différente à chaque visite
   let view = trip.origin ? 'route' : 'country'; // carte : trajet aérien ou pays
   const n = Number(trip.travelers) || 1;
-  const who = n <= 1 ? 'En solo' : `Avec ${n - 1} ${plural(n - 1, 'personne', 'personnes')}`;
+  let names = [...(trip.companions ?? [])];
+  let travelers = n;
+  let adding = false;
+  let expanded = false; // « +N » déplie tous les prénoms (pour pouvoir en retirer)
+  const peopleMarkup = () => {
+    const others = Math.max(travelers - 1 - names.length, 0); // personnes sans prénom renseigné
+    const shown = expanded || names.length <= 2 ? names : names.slice(0, 1); // une seule ligne : 2 prénoms, ou 1 prénom + « +N »
+    const extra = names.length - shown.length + others;
+    return String(html`
+      <span class="muted small-line">${names.length || others ? 'Voyage avec' : 'Voyage en solo'}</span>
+      ${adding ? html`<form id="people-form" class="people-form"><label class="sr-only" for="people-input">Prénom</label><input id="people-input" class="input" maxlength="40" placeholder="Prénom" autocomplete="off" required><button class="btn btn-primary btn-sm" type="submit">OK</button></form>`
+        : html`<div class="people-row">
+            ${shown.map((nm, i) => html`<span class="chip-person" title="${nm}"><span class="cp-name">${nm}</span><button type="button" class="cp-x" data-people-remove="${i}" aria-label="Retirer ${nm}">×</button></span>`)}
+            ${names.length > 2 ? html`<button type="button" class="chip-person chip-more" data-people-more title="${names.join(', ')}">${expanded ? 'Réduire' : `+${extra}`}</button>`
+              : others > 0 ? html`<span class="chip-person chip-more" title="Personnes sans prénom">+${others}</span>` : ''}
+            <button type="button" class="chip-add" data-people-add aria-label="Ajouter une personne" title="Ajouter une personne">+</button>
+          </div>`}`);
+  };
   const countdown = timing.phase === 'upcoming' ? { big: timing.days, small: plural(timing.days, 'jour restant', 'jours restants') } : null;
 
   el.innerHTML = String(html`
@@ -109,7 +126,7 @@ export async function mount(el, { user }) {
         <div class="hero-body">
           <div class="hero-label">${heroLabel}</div>
           <h2>${trip.destination}</h2>
-          <p>${formatRange(trip.startDate, trip.endDate)} · ${nights} ${plural(nights, 'nuit', 'nuits')} · ${trip.travelers} ${plural(trip.travelers, 'voyageur', 'voyageurs')}</p>
+          <p>${formatRange(trip.startDate, trip.endDate)} · ${nights} ${plural(nights, 'nuit', 'nuits')} · <span id="hero-travelers">${trip.travelers} ${plural(trip.travelers, 'voyageur', 'voyageurs')}</span></p>
           <div class="hero-chips">
             <a class="btn btn-hero" href="#/voyages">Ouvrir le voyage</a>
             <span class="hero-chip">${summary.count} ${plural(summary.count, 'réservation', 'réservations')}</span>
@@ -126,9 +143,7 @@ export async function mount(el, { user }) {
             <div class="mini-clock"><strong id="dest-time">--:--</strong><span class="muted small-line">Heure à ${trip.destination.split(',')[0]}</span></div>
             <div class="mini-temp" id="dest-weather"><span class="muted small-line">Météo…</span></div>
           </section>
-          <section class="card mini mini-people" aria-label="Voyageurs">
-            <span class="muted small-line">Voyage</span><strong>${who}</strong>
-          </section>
+          <section class="card mini mini-people" id="people" aria-label="Voyageurs">${raw(peopleMarkup())}</section>
         </div>
         <section class="card" aria-label="Budget du voyage">
           <h3 class="card-head">Budget du voyage <span class="muted small-line">en euros</span></h3>
@@ -207,8 +222,33 @@ export async function mount(el, { user }) {
     </section>
   `);
 
+  const refreshPeople = () => { const box = el.querySelector('#people'); if (box) box.innerHTML = peopleMarkup(); };
+  async function savePeople(next) {
+    try {
+      const t = await api.setCompanions(trip.id, next);
+      names = t.companions; travelers = t.travelers;
+      const h = el.querySelector('#hero-travelers');
+      if (h) h.textContent = `${travelers} ${plural(travelers, 'voyageur', 'voyageurs')}`;
+    } catch (err) { toast(err.message || 'Enregistrement impossible.', 5000, 'warn'); }
+    adding = false;
+    refreshPeople();
+  }
+  const onSubmit = (e) => {
+    if (e.target.id !== 'people-form') return;
+    e.preventDefault();
+    const v = e.target.querySelector('input').value.trim();
+    if (v) savePeople([...names, v]); else { adding = false; refreshPeople(); }
+  };
+  const onKey = (e) => { if (e.key === 'Escape' && adding) { adding = false; refreshPeople(); } };
+  el.addEventListener('submit', onSubmit);
+  el.addEventListener('keydown', onKey);
   let redraw = () => {};
   const onClick = async (e) => {
+    const addBtn = e.target.closest('[data-people-add]');
+    if (addBtn) { adding = true; refreshPeople(); el.querySelector('#people-input')?.focus(); return; }
+    if (e.target.closest('[data-people-more]')) { expanded = !expanded; refreshPeople(); return; }
+    const rm = e.target.closest('[data-people-remove]');
+    if (rm) { await savePeople(names.filter((_, i) => i !== Number(rm.dataset.peopleRemove))); return; }
     const mv = e.target.closest('[data-map-view]');
     if (mv) { view = mv.dataset.mapView; redraw(); return; }
     if (e.target.closest('[data-action="import"]')) return openImport();
@@ -316,6 +356,8 @@ export async function mount(el, { user }) {
     clearInterval(slideshow);
     clearInterval(clock);
     el.removeEventListener('click', onClick);
+    el.removeEventListener('submit', onSubmit);
+    el.removeEventListener('keydown', onKey);
     unmountCharts();
     miniMap?.remove();
   };
