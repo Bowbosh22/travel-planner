@@ -505,3 +505,12 @@ svg { flex: none; }
 .toast-link { cursor: pointer; text-decoration: underline; }
 .budget-banner .bb-link { color: inherit; text-decoration: none; cursor: pointer; }
 .budget-banner .bb-link:hover strong { text-decoration: underline; }
+
+/* Fonds d'écran photo (thème Paysage) : voile sombre pour garder les textes lisibles */
+:root[data-theme="paysage"][data-bg="savane"] body { background: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), url('/img/bg/savane.jpg') center / cover fixed no-repeat; }
+:root[data-theme="paysage"][data-bg="plage"] body { background: linear-gradient(rgba(8,20,20,.52), rgba(8,20,20,.7)), url('/img/bg/plage.jpg') center / cover fixed no-repeat; }
+:root[data-theme="paysage"][data-bg="foret"] body { background: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), url('/img/bg/foret.jpg') center / cover fixed no-repeat; }
+:root[data-theme="paysage"][data-bg="neige"] body { background: linear-gradient(rgba(8,20,20,.62), rgba(8,20,20,.8)), url('/img/bg/neige.jpg') center / cover fixed no-repeat; }
+:root[data-theme="paysage"][data-bg="perso"] body { background: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), var(--bg-custom) center / cover fixed no-repeat; }
+.bg-options .tile { width: 116px; }
+.bg-art { background-size: cover; background-position: center; min-height: 64px; }

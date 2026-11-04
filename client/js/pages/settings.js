@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { COLORS, MODES, getTheme, setTheme } from '../theme.js';
+import { COLORS, MODES, BACKGROUNDS, getTheme, setTheme, getCustomBackground, setCustomBackground, photoToDataUrl } from '../theme.js';
 import { html, raw } from '../lib/html.js';
 import { formatEUR } from '../lib/format.js';
 import { bookmarkletHref } from '../lib/capture.js';
@@ -41,6 +41,27 @@ export async function mount(el, { user, logout }) {
                 </button>`)}
             </div>
           </section>
+          <section class="card" aria-label="Fond d'écran">
+            <h2>Fond d'écran</h2>
+            <div class="options bg-options">
+              ${BACKGROUNDS.map((b) => html`
+                <button type="button" class="tile" data-bg="${b.id}" aria-pressed="${theme.bg === b.id}">
+                  <span class="tile-art bg-art" style="background-image:url('${b.thumb}')"></span>
+                  <span class="tile-foot">${b.label}<span class="mark"></span></span>
+                </button>`)}
+              ${getCustomBackground() ? html`
+                <button type="button" class="tile" data-bg="perso" aria-pressed="${theme.bg === 'perso'}">
+                  <span class="tile-art bg-art" style="background-image:url('${raw(getCustomBackground())}')"></span>
+                  <span class="tile-foot">Ma photo<span class="mark"></span></span>
+                </button>` : ''}
+            </div>
+            <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+              <label class="btn btn-soft" for="bg-file">Choisir ma photo…</label>
+              <input id="bg-file" type="file" accept="image/*" class="sr-only">
+              ${getCustomBackground() ? html`<button type="button" class="btn btn-ghost btn-sm" data-bg-clear>Retirer ma photo</button>` : ''}
+            </div>
+            <p class="muted" style="margin-top:12px;font-size:13px">Le fond s'affiche avec la couleur Paysage, et se règle sur cet appareil. Votre photo reste dans votre navigateur.</p>
+          </section>
           <section class="card" aria-label="Favori d'import">
             <h2>Importer depuis mon navigateur</h2>
             <p class="muted" style="margin:8px 0 16px">Pour Airbnb, Booking et tout site qui refuse les robots : le favori lit la page que <strong>vous</strong> regardez (nom, lieu, total, dates) et préremplit une réservation. Vous vérifiez avant d'ajouter.</p>
@@ -81,8 +102,18 @@ export async function mount(el, { user, logout }) {
 
   const onClick = (e) => {
     if (e.target.closest('[data-logout]')) return logout();
+    if (e.target.closest('[data-bg-clear]')) {
+      setCustomBackground(null);
+      if (getTheme().bg === 'perso') setTheme({ bg: 'paysage' });
+      render(); wireBookmarklet(); return;
+    }
     const tile = e.target.closest('.tile');
     if (!tile) return;
+    if (tile.dataset.bg) { // un fond photo s'affiche avec la couleur Paysage (cartes en verre)
+      setTheme({ bg: tile.dataset.bg, color: 'paysage' });
+      api.saveTheme({ color: 'paysage' }).catch(() => {});
+      render(); wireBookmarklet(); return;
+    }
     const patch = tile.dataset.mode ? { mode: tile.dataset.mode } : { color: tile.dataset.color };
     setTheme(patch);
     api.saveTheme(patch).catch(() => {}); // enregistré sur le compte ; le choix local reste appliqué en cas d'échec
@@ -103,9 +134,20 @@ export async function mount(el, { user, logout }) {
     }
   };
 
+  const onFile = async (e) => {
+    if (e.target.id !== 'bg-file' || !e.target.files?.[0]) return;
+    try {
+      const url = await photoToDataUrl(e.target.files[0]);
+      if (!setCustomBackground(url)) throw new Error('stockage plein');
+      setTheme({ bg: 'perso', color: 'paysage' });
+      api.saveTheme({ color: 'paysage' }).catch(() => {});
+      render(); wireBookmarklet();
+    } catch { toast('Photo illisible ou trop lourde pour ce navigateur. Essayez une autre image.', 5000, 'warn'); }
+  };
+  el.addEventListener('change', onFile);
   render();
   wireBookmarklet();
   el.addEventListener('click', onClick);
   el.addEventListener('click', onBmClick);
-  return () => { el.removeEventListener('click', onClick); el.removeEventListener('click', onBmClick); };
+  return () => { el.removeEventListener('change', onFile); el.removeEventListener('click', onClick); el.removeEventListener('click', onBmClick); };
 }
