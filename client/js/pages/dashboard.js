@@ -8,6 +8,7 @@ import { openImport } from '../components/import-flow.js';
 import { toast } from '../components/toast.js';
 import { loadLeaflet } from './carte.js';
 import { bearing, distanceKm, flightMinutes, formatDuration, greatCircle } from '../lib/geo.js';
+import { addBasemap } from '../lib/basemap.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { formatEUR, formatMoney, formatPercent, formatRange, formatLongDate, daysBetween, plural } from '../lib/format.js';
@@ -292,7 +293,7 @@ export async function mount(el, { user }) {
     const box = el.querySelector('#dash-map');
     if (!alive || !box || !L) { if (alive) caption('Carte indisponible.'); return; }
     miniMap = L.map(box, { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, attributionControl: true });
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' }).addTo(miniMap);
+    addBasemap(L, miniMap);
     const layer = L.layerGroup().addTo(miniMap);
     const place = (pt, label, dir = 'top') => L.circleMarker([pt.lat, pt.lng], { radius: 6, weight: 2, color: '#fff', fillColor: '#F0A25A', fillOpacity: 1, interactive: false }).bindTooltip(label, { permanent: true, direction: dir, offset: dir === 'left' ? [-8, 0] : dir === 'right' ? [8, 0] : dir === 'top' ? [0, -6] : [0, 6], className: 'map-label' }).addTo(layer);
     const city = (t) => String(t).split(',')[0];

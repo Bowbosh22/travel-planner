@@ -2,6 +2,7 @@
 // Les coordonnées sont calculées par le serveur (une seule fois par lieu, puis mémorisées).
 import { api } from '../api.js';
 import { CATEGORIES } from '../services/budget.js';
+import { addBasemap } from '../lib/basemap.js';
 import { html, raw } from '../lib/html.js';
 import { formatCurrency, formatLongDate } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
@@ -139,7 +140,7 @@ export async function mount(el) {
       const L = await loadLeaflet();
       if (!alive) return cleanup;
       map = L.map(el.querySelector('#map'), { scrollWheelZoom: false }).setView([20, 0], 2);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' }).addTo(map);
+      addBasemap(L, map, { switcher: true });
 
       for (const b of withPlace) if (b.geoDone && b.lat !== null) addMarker(L, b, b.lat, b.lng);
       fit(L);

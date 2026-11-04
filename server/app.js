@@ -34,7 +34,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
           scriptSrc: ["'self'"],
           styleSrc: ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
           fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-          imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', 'https://upload.wikimedia.org', 'https://images.unsplash.com'], // fonds de carte OpenStreetMap + photos des villes (Unsplash, Wikipédia)
+          imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', 'https://*.basemaps.cartocdn.com', 'https://server.arcgisonline.com', 'https://upload.wikimedia.org', 'https://images.unsplash.com'], // fonds de carte OpenStreetMap + photos des villes (Unsplash, Wikipédia)
           connectSrc: ["'self'"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
