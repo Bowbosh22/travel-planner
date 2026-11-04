@@ -92,7 +92,8 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
 
   app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), { maxAge: '1d' }));
   app.use('/vendor/chart.js', express.static(path.join(root, 'node_modules', 'chart.js', 'dist'), { maxAge: '1d' }));
-  app.use(express.static(path.join(root, 'client'), { extensions: ['html'] }));
+  // no-cache : le navigateur revérifie à chaque visite (ETag), donc une mise à jour du site s'affiche tout de suite.
+  app.use(express.static(path.join(root, 'client'), { extensions: ['html'], setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
   app.use((_req, res) => res.status(404).type('text/plain').send('Page introuvable'));
   return app;
 }
