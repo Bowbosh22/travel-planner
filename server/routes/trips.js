@@ -20,7 +20,7 @@ function tripOut(r, today = todayIso(), ctx = {}) {
     role: ctx.userId && r.user_id !== ctx.userId ? 'member' : 'owner',
     members: ctx.members ?? [],
     inviteToken: ctx.userId && r.user_id === ctx.userId ? r.invite_token ?? null : null, imageUrl: r.image_url, imageCredit: r.image_credit, photos: r.photos ?? [], origin: r.origin ?? '', companions: r.companions ?? [],
-    geo: r.geo_key === geoKey(r) ? r.geo : null, geoDone: r.geo_key === geoKey(r),
+    geo: r.geo_key === geoKey(r) && r.geo?.dest ? r.geo : null, geoDone: r.geo_key === geoKey(r) && Boolean(r.geo?.dest), // une recherche sans résultat n'est pas mémorisée : on réessaie
   };
 }
 

@@ -38,7 +38,7 @@ export function createGeoRoutes(pool, geocoder) {
       const t = rows[0];
       if (!t) return res.status(404).json({ error: 'Introuvable.' });
       const key = geoKey(t);
-      if (t.geo_key === key) return res.json({ geo: t.geo });
+      if (t.geo_key === key && t.geo?.dest) return res.json({ geo: t.geo });
       let dest;
       let country;
       let origin = null;
@@ -51,6 +51,7 @@ export function createGeoRoutes(pool, geocoder) {
       }
       const point = (p) => (p ? { lat: p.lat, lng: p.lng } : null);
       const geo = { dest: point(dest), origin: point(origin), box: country?.box ?? dest?.box ?? null };
+      if (!geo.dest) return res.json({ geo }); // introuvable : rien n'est mémorisé, on réessaiera
       await pool.query('UPDATE trips SET geo=$2::jsonb, geo_key=$3 WHERE id=$1 AND origin=$4 AND destination=$5 AND country=$6', [t.id, JSON.stringify(geo), key, t.origin, t.destination, t.country]);
       res.json({ geo });
     } catch (err) { next(err); }
