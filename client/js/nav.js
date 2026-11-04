@@ -12,8 +12,6 @@ export const NAV = [
 
 // Sections pas encore développées : la page indique l'étape prévue.
 export const PLACEHOLDERS = {
-  '/budget': { step: 6, text: 'Suivi complet du budget : initial, prévisionnel, payé, restant, avec alertes.' },
-  '/simulateur': { step: 6, text: 'Tester des scénarios sans toucher à vos vraies réservations.' },
   '/planning': { step: 7, text: 'Vue calendrier et vue quotidienne de votre séjour.' },
   '/carte': { step: 7, text: 'Hôtels, restaurants et activités sur une carte interactive.' },
   '/documents': { step: 7, text: 'Billets, confirmations et factures rattachés à chaque réservation.' },

@@ -105,6 +105,19 @@ function buildAlerts(trip, active, forecast, available, engagedPct) {
   return alerts;
 }
 
+// Avis de dépassement du budget. lastOverBy = dépassement déjà signalé dans cette session (0 si aucun).
+// announce = vrai quand le dépassement est nouveau ou s'est aggravé : c'est alors qu'il faut prévenir l'utilisateur.
+export function budgetNotice(summary, lastOverBy = 0) {
+  const overBy = summary.available < 0 ? Math.round(-summary.available * 100) / 100 : 0;
+  if (overBy <= 0) return null;
+  return {
+    overBy,
+    announce: overBy > lastOverBy + 0.004,
+    title: `Budget dépassé de ${formatEUR(overBy)}`,
+    text: `${formatEUR(summary.forecast)} prévus pour un budget de ${formatEUR(summary.budget)}.`,
+  };
+}
+
 export function tripTiming(trip, todayIso, daysBetween) {
   const untilStart = daysBetween(todayIso, trip.startDate);
   const untilEnd = daysBetween(todayIso, trip.endDate);

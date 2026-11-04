@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { summarize, tripTiming } from '../services/budget.js';
-import { createCharts, seriesColor } from '../components/charts.js';
+import { chartsMarkup, mountCharts } from '../components/budget-charts.js';
+import { announceBudget, budgetBanner } from '../components/budget-alert.js';
 import { openImport } from '../components/import-flow.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
@@ -32,6 +33,7 @@ export async function mount(el, { user }) {
 
   const bookings = await api.listBookings(trip.id);
   const summary = summarize(trip, bookings);
+  announceBudget(trip.id, summary);
   const timing = tripTiming(trip, today, daysBetween);
   const nextId = trips.filter((t) => t.startDate > today).sort((a, b) => a.startDate.localeCompare(b.startDate))[0]?.id;
   const nights = daysBetween(trip.startDate, trip.endDate);
@@ -54,6 +56,7 @@ export async function mount(el, { user }) {
       </div>
     </header>
 
+    ${budgetBanner(trip.id, summary)}
     <div class="stack">
       <section class="hero" aria-label="Voyage affiché">
         <div>
@@ -109,68 +112,10 @@ export async function mount(el, { user }) {
     window.dispatchEvent(new HashChangeEvent('hashchange')); // recharge la vue avec le nouveau voyage
   });
 
-  // Graphiques (reconstruits si le thème change)
-  let charts = null;
-  const build = () => {
-    charts?.destroy();
-    if (!hasData) return;
-    if (!window.Chart) {
-      el.querySelectorAll('.chart-box').forEach((b) => { b.textContent = 'Graphique indisponible.'; });
-      return;
-    }
-    charts = createCharts({
-      donut: el.querySelector('#chart-donut'),
-      bars: el.querySelector('#chart-bars'),
-      line: el.querySelector('#chart-line'),
-      gauge: el.querySelector('#chart-gauge'),
-    }, summary, trip);
-  };
-  build();
-  window.addEventListener('themechange', build);
+  const unmountCharts = mountCharts(el, summary, trip, hasData);
 
   return () => {
-    window.removeEventListener('themechange', build);
     el.removeEventListener('click', onClick);
-    charts?.destroy();
+    unmountCharts();
   };
-}
-
-function chartsMarkup(s) {
-  const timelineOk = s.timeline.length > 0;
-  return html`
-    <div class="grid-2">
-      <section class="card" aria-label="Dépenses par catégorie">
-        <h3 class="card-head">Dépenses par catégorie</h3>
-        <div class="donut-row">
-          <div class="chart-box h-donut">
-            <canvas id="chart-donut" role="img" aria-label="Répartition des dépenses prévues par catégorie"></canvas>
-            <div class="chart-center"><strong>${formatEUR(s.forecast)}</strong><span>prévu</span></div>
-          </div>
-          <ul class="legend-list">
-            ${s.byCategory.map((c, i) => html`<li><span class="dot" style="background:${raw(seriesColor(i))}"></span><span class="label">${c.label}</span><span class="value">${formatEUR(c.forecast)}</span></li>`)}
-          </ul>
-        </div>
-      </section>
-      <section class="card" aria-label="Prévu et payé">
-        <div class="card-head"><h3>Prévu et payé</h3>
-          <div class="legend"><span><i class="dot" style="background:var(--s4)"></i>Prévu</span><span><i class="dot" style="background:var(--s1)"></i>Payé</span></div>
-        </div>
-        <div class="chart-box h-bars"><canvas id="chart-bars" role="img" aria-label="Comparaison du prévu et du payé par catégorie"></canvas></div>
-      </section>
-    </div>
-    <div class="grid-2 flip">
-      <section class="card" aria-label="Évolution des dépenses">
-        <h3 class="card-head">Évolution des dépenses</h3>
-        ${timelineOk
-          ? html`<div class="chart-box h-line"><canvas id="chart-line" role="img" aria-label="Cumul des paiements dans le temps, avec projection jusqu'au total prévu"></canvas></div>`
-          : html`<p class="muted">Aucun paiement enregistré pour le moment.</p>`}
-      </section>
-      <section class="card" aria-label="Budget restant">
-        <h3 class="card-head">Budget restant</h3>
-        <div class="chart-box h-gauge">
-          <canvas id="chart-gauge" role="img" aria-label="Budget disponible : ${formatEUR(s.available)}"></canvas>
-          <div class="chart-center gauge-center"><strong>${formatEUR(s.available)}</strong><span>${formatPercent(Math.max(100 - s.engagedPct, 0))} du budget initial</span></div>
-        </div>
-      </section>
-    </div>`;
 }

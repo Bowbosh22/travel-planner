@@ -3,6 +3,7 @@ import { openDialog, confirmDialog } from '../components/dialog.js';
 import { openImport } from '../components/import-flow.js';
 import { amountFieldHtml, amountPayload, loadCurrencies, wireAmountField } from '../components/amount-field.js';
 import { toast } from '../components/toast.js';
+import { announceBudget, budgetBanner } from '../components/budget-alert.js';
 import { CATEGORIES, summarize } from '../services/budget.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
@@ -76,6 +77,7 @@ export async function mount(el) {
 
   const render = () => {
     const s = summarize(trip, bookings);
+    announceBudget(trip.id, s);
     const groups = CATEGORIES.map((c) => ({ ...c, items: bookings.filter((b) => b.category === c.id) })).filter((g) => g.items.length);
     el.innerHTML = String(html`
       <header class="page-head">
@@ -87,6 +89,7 @@ export async function mount(el) {
           <button type="button" class="btn btn-primary" data-act="new">${icon('plus', 16)}Ajouter</button>
         </div>
       </header>
+      ${budgetBanner(trip.id, s)}
       <section class="card summary-strip" aria-label="Résumé">
         <div><div class="metric-label">Prévisionnel</div><strong>${formatEUR(s.forecast)}</strong></div>
         <div><div class="metric-label">Payé</div><strong>${formatEUR(s.paid)}</strong></div>

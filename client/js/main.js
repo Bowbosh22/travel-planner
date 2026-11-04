@@ -6,6 +6,8 @@ import { openImport } from './components/import-flow.js';
 import * as dashboard from './pages/dashboard.js';
 import * as trips from './pages/trips.js';
 import * as bookings from './pages/bookings.js';
+import * as budget from './pages/budget.js';
+import * as simulateur from './pages/simulateur.js';
 import * as settings from './pages/settings.js';
 import * as placeholder from './pages/placeholder.js';
 import * as login from './pages/login.js';
@@ -16,7 +18,7 @@ const sidebar = document.getElementById('sidebar');
 const tabbar = document.getElementById('tabbar');
 const sheet = document.getElementById('sheet');
 
-const PAGES = { '/': dashboard, '/voyages': trips, '/reservations': bookings, '/parametres': settings };
+const PAGES = { '/': dashboard, '/voyages': trips, '/reservations': bookings, '/budget': budget, '/simulateur': simulateur, '/parametres': settings };
 let user = null;
 let destroyCurrent = () => {};
 let token = 0;
