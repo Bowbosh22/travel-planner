@@ -3,6 +3,7 @@
 import { api } from '../api.js';
 import { openDialog } from './dialog.js';
 import { toast } from './toast.js';
+import { amountFieldHtml, amountPayload, loadCurrencies, wireAmountField } from './amount-field.js';
 import { CATEGORIES } from '../services/budget.js';
 import { html, raw } from '../lib/html.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
@@ -18,10 +19,17 @@ const urlStep = html`
 
 const tag = (found) => (found ? html`<span class="found">trouvé sur le site</span>` : '');
 
-function reviewStep(result, trips, activeId) {
+function reviewStep(result, trips, activeId, currencies) {
   const f = result.fields;
   const src = result.sources;
-  const other = result.priceFound && result.amountEur === null ? result.priceFound : null;
+  const pf = result.priceFound;
+  const supported = pf?.currency && currencies.some((c) => c.code === pf.currency);
+  // Prix trouvé dans une devise gérée : montant et devise préremplis (converti en euros à l'ajout, taux figé).
+  const initial = supported ? { amount: pf.amount, currency: pf.currency } : { amount: '', currency: 'EUR' };
+  const priceNote = !pf ? '' : supported ? '' : pf.currency
+    ? `Prix trouvé : ${pf.amount} ${pf.currency}. Cette devise n'est pas gérée : saisissez le montant dans une devise proposée.`
+    : `Prix trouvé : ${pf.amount}, sans devise indiquée. Choisissez la devise et vérifiez le montant.`;
+  const prefilled = supported ? html`<span class="found">trouvé sur le site</span>` : '';
   return html`
     <input type="hidden" name="sourceUrl" value="${result.url}">
     <p class="import-summary">${result.found > 0
@@ -39,9 +47,9 @@ function reviewStep(result, trips, activeId) {
         </select></div>
       <div class="field"><label for="i-status">Statut</label>
         <select class="select full" id="i-status" name="status">${Object.entries(STATUS).map(([id, label]) => html`<option value="${id}" ${id === 'a_reserver' ? raw('selected') : ''}>${label}</option>`)}</select></div>
-      <div class="field span-2"><label for="i-amount">Montant en euros ${tag(result.amountEur !== null)}</label>
-        <input class="input" id="i-amount" name="amountEur" inputmode="decimal" value="${result.amountEur ?? ''}" placeholder="Laissez vide si inconnu">
-        ${other ? html`<small class="hint warn">Prix trouvé : ${other.amount} ${other.currency ?? '(devise non indiquée)'}. Saisissez le montant en euros ; la conversion automatique arrive à l'étape 5.</small>` : ''}</div>
+      ${amountFieldHtml(currencies, initial)}
+      ${prefilled ? html`<p class="hint span-2">Prix ${prefilled}</p>` : ''}
+      ${priceNote ? html`<p class="hint warn span-2">${priceNote}</p>` : ''}
       <div class="field span-2"><label for="i-loc">Lieu ${tag(f.location)}</label><input class="input" id="i-loc" name="location" value="${f.location ?? ''}" maxlength="200"></div>
       <div class="field"><label for="i-start">Du ${tag(f.startDate)}</label><input class="input" id="i-start" name="startsOn" type="date" value="${f.startDate ?? ''}"></div>
       <div class="field"><label for="i-end">Au ${tag(f.endDate)}</label><input class="input" id="i-end" name="endsOn" type="date" value="${f.endDate ?? ''}"></div>
@@ -60,6 +68,7 @@ export async function openImport() {
     location.hash = '#/voyages';
     return undefined;
   }
+  const currencies = await loadCurrencies();
   const activeId = trips.some((t) => t.id === getActiveTripId()) ? getActiveTripId() : trips[0].id;
   let step = 'url';
 
@@ -70,16 +79,17 @@ export async function openImport() {
     onSubmit: async (v, dlg) => {
       if (step === 'url') {
         const result = await api.importUrl(v.url); // les erreurs (captcha, adresse refusée...) s'affichent dans la boîte
-        dlg.querySelector('.dialog-body').innerHTML = String(reviewStep(result, trips, activeId));
+        dlg.querySelector('.dialog-body').innerHTML = String(reviewStep(result, trips, activeId, currencies));
         dlg.querySelector('[type="submit"]').textContent = 'Ajouter au voyage';
         dlg.querySelector('.dialog-title').textContent = 'Vérifier avant d\'ajouter';
+        wireAmountField(dlg);
         dlg.querySelector('#i-name')?.focus();
         step = 'review';
         return false;
       }
       const payload = {
         name: v.name, category: v.category, status: v.status,
-        amountEur: v.amountEur?.trim() === '' ? null : v.amountEur,
+        ...amountPayload(v),
         location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl,
       };
       await api.createBooking(v.tripId, payload);

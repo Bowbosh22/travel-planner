@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { createAuth } from './auth.js';
 import { createTripRoutes } from './routes/trips.js';
 import { createImportRoutes } from './routes/import.js';
+import { createFxRoutes } from './routes/fx.js';
+import { createFxService } from './fx/rates.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // importOptions : réservé aux tests (autoriser un serveur local). Jamais piloté par une variable d'environnement.
-export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {} } = {}) {
+export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool) } = {}) {
   const app = express();
   app.disable('x-powered-by');
   if (isProd) app.set('trust proxy', 1); // Railway : HTTPS terminé en amont
@@ -58,7 +60,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
   const auth = createAuth(pool, { secureCookie: isProd });
   api.use(auth.loadUser);
   api.use('/auth', auth.router);
-  api.use(auth.requireUser, createImportRoutes(importOptions), createTripRoutes(pool));
+  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx));
 
   api.use((_req, res) => res.status(404).json({ error: 'Introuvable.' }));
   // JSON invalide, etc. : jamais de trace technique envoyée au navigateur.

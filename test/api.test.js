@@ -5,11 +5,23 @@ import assert from 'node:assert/strict';
 import { createPool } from '../server/db.js';
 import { migrate } from '../server/migrate.js';
 import { createApp } from '../server/app.js';
+import { createFxService } from '../server/fx/rates.js';
 
 const url = process.env.TEST_DATABASE_URL;
 const skip = url ? false : 'TEST_DATABASE_URL non défini (tests API ignorés)';
 
 let pool, server, base;
+// Faux services de taux de change : aucun appel réseau dans les tests.
+const rates = { down: false, ecbDown: false };
+const fetchJson = async (url) => {
+  if (rates.down) throw new Error('hors ligne');
+  if (url.includes('frankfurter')) {
+    if (rates.ecbDown) throw new Error('BCE en panne');
+    return { date: '2026-11-03', rates: { USD: 1.1 } };
+  }
+  if (url.includes('jsdelivr')) return { date: '2026-11-04', eur: { usd: 1.25 } };
+  throw new Error('inconnu');
+};
 
 // Mini client HTTP avec « cookie jar » : un client = un navigateur.
 function client() {
@@ -35,7 +47,7 @@ before(async () => {
   pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  server = createApp(pool, { isProd: false }).listen(0);
+  server = createApp(pool, { isProd: false, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
@@ -106,7 +118,7 @@ test('isolation : un utilisateur ne voit ni ne modifie les données d\'un autre'
   const a = client();
   await a.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
   const t = (await a.post('/api/trips', trip)).body.trip;
-  const b1 = (await a.post(`/api/trips/${t.id}/bookings`, { category: 'billets', name: 'Vol', amountEur: 400, status: 'reserve' })).body.booking;
+  const b1 = (await a.post(`/api/trips/${t.id}/bookings`, { category: 'billets', name: 'Vol', amount: 400, status: 'reserve' })).body.booking;
 
   const intruder = client();
   await signup(intruder, 'bob@test.fr');
@@ -114,8 +126,8 @@ test('isolation : un utilisateur ne voit ni ne modifie les données d\'un autre'
   assert.equal((await intruder.get(`/api/trips/${t.id}/bookings`)).body.bookings.length, 0);
   assert.equal((await intruder.put(`/api/trips/${t.id}`, trip)).status, 404);
   assert.equal((await intruder.del(`/api/trips/${t.id}`)).status, 404);
-  assert.equal((await intruder.put(`/api/bookings/${b1.id}`, { category: 'billets', name: 'x', amountEur: 1 })).status, 404);
-  assert.equal((await intruder.post(`/api/bookings/${b1.id}/payments`, { amountEur: 10, date: '2026-11-01' })).status, 404);
+  assert.equal((await intruder.put(`/api/bookings/${b1.id}`, { category: 'billets', name: 'x', amount: 1 })).status, 404);
+  assert.equal((await intruder.post(`/api/bookings/${b1.id}/payments`, { amount: 10, date: '2026-11-01' })).status, 404);
   assert.equal((await intruder.post(`/api/trips/${t.id}/bookings`, { category: 'billets', name: 'x' })).status, 404);
   assert.equal((await a.get('/api/trips')).body.trips.length, 1, 'rien n\'a été supprimé');
 });
@@ -124,23 +136,23 @@ test('réservations et paiements : réservé ≠ payé, pas de trop-payé', { sk
   const c = client();
   await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
   const t = (await c.get('/api/trips')).body.trips[0];
-  const hotel = (await c.post(`/api/trips/${t.id}/bookings`, { category: 'logement', name: 'Hôtel', amountEur: '650,50', status: 'reserve' })).body.booking;
+  const hotel = (await c.post(`/api/trips/${t.id}/bookings`, { category: 'logement', name: 'Hôtel', amount: '650,50', status: 'reserve' })).body.booking;
   assert.equal(hotel.amountEur, 650.5, 'virgule décimale acceptée');
   assert.deepEqual(hotel.payments, []);
 
-  const noPrice = (await c.post(`/api/trips/${t.id}/bookings`, { category: 'restaurants', name: 'Dîner', amountEur: null })).body.booking;
+  const noPrice = (await c.post(`/api/trips/${t.id}/bookings`, { category: 'restaurants', name: 'Dîner', amount: null })).body.booking;
   assert.equal(noPrice.amountEur, null);
-  assert.equal((await c.post(`/api/bookings/${noPrice.id}/payments`, { amountEur: 10, date: '2026-11-01' })).status, 400, 'pas de paiement sans montant');
+  assert.equal((await c.post(`/api/bookings/${noPrice.id}/payments`, { amount: 10, date: '2026-11-01' })).status, 400, 'pas de paiement sans montant');
 
-  const p1 = await c.post(`/api/bookings/${hotel.id}/payments`, { amountEur: 150, date: '2026-10-10' });
+  const p1 = await c.post(`/api/bookings/${hotel.id}/payments`, { amount: 150, date: '2026-10-10' });
   assert.equal(p1.status, 201);
-  assert.equal((await c.post(`/api/bookings/${hotel.id}/payments`, { amountEur: 600, date: '2026-10-11' })).status, 400, 'dépasserait le montant');
-  assert.equal((await c.post(`/api/bookings/${hotel.id}/payments`, { amountEur: 0, date: '2026-10-11' })).status, 400);
-  assert.equal((await c.post(`/api/bookings/${hotel.id}/payments`, { amountEur: 5, date: '2026-13-45' })).status, 400);
+  assert.equal((await c.post(`/api/bookings/${hotel.id}/payments`, { amount: 600, date: '2026-10-11' })).status, 400, 'dépasserait le montant');
+  assert.equal((await c.post(`/api/bookings/${hotel.id}/payments`, { amount: 0, date: '2026-10-11' })).status, 400);
+  assert.equal((await c.post(`/api/bookings/${hotel.id}/payments`, { amount: 5, date: '2026-13-45' })).status, 400);
 
-  assert.equal((await c.put(`/api/bookings/${hotel.id}`, { category: 'logement', name: 'Hôtel', amountEur: 100 })).status, 400, 'montant < déjà payé');
-  assert.equal((await c.put(`/api/bookings/${hotel.id}`, { category: 'logement', name: 'Hôtel', amountEur: null })).status, 400);
-  assert.equal((await c.put(`/api/bookings/${hotel.id}`, { category: 'inconnue', name: 'Hôtel', amountEur: 700 })).status, 400);
+  assert.equal((await c.put(`/api/bookings/${hotel.id}`, { category: 'logement', name: 'Hôtel', amount: 100 })).status, 400, 'montant < déjà payé');
+  assert.equal((await c.put(`/api/bookings/${hotel.id}`, { category: 'logement', name: 'Hôtel', amount: null })).status, 400);
+  assert.equal((await c.put(`/api/bookings/${hotel.id}`, { category: 'inconnue', name: 'Hôtel', amount: 700 })).status, 400);
 
   const list = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings;
   const h = list.find((b) => b.id === hotel.id);
@@ -157,8 +169,8 @@ test('supprimer un voyage supprime ses réservations et paiements', { skip }, as
   const c = client();
   await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
   const t = (await c.get('/api/trips')).body.trips[0];
-  const b = (await c.post(`/api/trips/${t.id}/bookings`, { category: 'billets', name: 'Vol', amountEur: 100, status: 'reserve' })).body.booking;
-  await c.post(`/api/bookings/${b.id}/payments`, { amountEur: 50, date: '2026-11-01' });
+  const b = (await c.post(`/api/trips/${t.id}/bookings`, { category: 'billets', name: 'Vol', amount: 100, status: 'reserve' })).body.booking;
+  await c.post(`/api/bookings/${b.id}/payments`, { amount: 50, date: '2026-11-01' });
   await c.del(`/api/trips/${t.id}`);
   assert.equal((await pool.query('SELECT count(*)::int n FROM bookings')).rows[0].n, 0);
   assert.equal((await pool.query('SELECT count(*)::int n FROM payments')).rows[0].n, 0);
@@ -197,7 +209,7 @@ test('réservation : lieu, dates et lien enregistrés, conservés à la modifica
   await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
   const t = (await c.post('/api/trips', trip)).body.trip;
   const created = await c.post(`/api/trips/${t.id}/bookings`, {
-    category: 'logement', name: 'Hôtel', amountEur: 100, status: 'reserve',
+    category: 'logement', name: 'Hôtel', amount: 100, status: 'reserve',
     location: 'Lisbonne', startsOn: '2026-12-12', endsOn: '2026-12-19', sourceUrl: 'https://hotel.exemple.com/x?a=1',
   });
   assert.equal(created.status, 201);
@@ -207,11 +219,11 @@ test('réservation : lieu, dates et lien enregistrés, conservés à la modifica
   assert.equal(b.sourceUrl, 'https://hotel.exemple.com/x?a=1');
 
   // Modification sans les détails : ils sont conservés.
-  const kept = await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel 2', amountEur: 100, status: 'reserve' });
+  const kept = await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel 2', amount: 100, status: 'reserve' });
   assert.equal(kept.body.booking.location, 'Lisbonne');
   assert.equal(kept.body.booking.endsOn, '2026-12-19');
   // Champ vide : effacé.
-  const cleared = await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel 2', amountEur: 100, status: 'reserve', location: '' });
+  const cleared = await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel 2', amount: 100, status: 'reserve', location: '' });
   assert.equal(cleared.body.booking.location, null);
 
   const bad = (extra) => c.post(`/api/trips/${t.id}/bookings`, { category: 'autres', name: 'X', ...extra });
@@ -220,5 +232,125 @@ test('réservation : lieu, dates et lien enregistrés, conservés à la modifica
   assert.equal((await bad({ sourceUrl: 'https://u:p@exemple.com' })).status, 400);
   assert.equal((await bad({ startsOn: '2026-02-30' })).status, 400);
   assert.equal((await bad({ startsOn: '2026-12-20', endsOn: '2026-12-10' })).status, 400);
-  assert.equal((await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'H', amountEur: 100, endsOn: '2026-01-01' })).status, 400, 'fin avant le début déjà enregistré');
+  assert.equal((await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'H', amount: 100, endsOn: '2026-01-01' })).status, 400, 'fin avant le début déjà enregistré');
 });
+
+const bookingIn = (tripId, c, body) => c.post(`/api/trips/${tripId}/bookings`, { category: 'logement', name: 'Hôtel', status: 'reserve', ...body });
+const freshTrip = async (c) => (await c.post('/api/trips', trip)).body.trip;
+
+test('devises : conversion au taux du jour, figée sur la réservation', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+
+  const usd = (await bookingIn(t.id, c, { amount: 110, currency: 'USD' })).body.booking;
+  assert.equal(usd.amountEur, 100, '110 USD à 1,10 = 100 €');
+  assert.equal(usd.amount, 110);
+  assert.equal(usd.currency, 'USD');
+  assert.equal(usd.fxRate, 1.1);
+  assert.equal(usd.fxDate, '2026-11-03', 'date du taux chez la source');
+
+  const cfa = (await bookingIn(t.id, c, { amount: 655957, currency: 'XAF' })).body.booking;
+  assert.equal(cfa.amountEur, 1000, 'parité fixe : 655 957 FCFA = 1 000 €');
+  assert.equal(cfa.fxRate, 655.957);
+  const cfa2 = (await bookingIn(t.id, c, { amount: 100000, currency: 'XOF' })).body.booking;
+  assert.equal(cfa2.amountEur, 152.45);
+
+  // Le taux change ensuite chez la source : la réservation existante ne bouge pas.
+  const before = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.find((b) => b.id === usd.id);
+  assert.equal(before.amountEur, 100);
+  const renamed = await c.put(`/api/bookings/${usd.id}`, { category: 'logement', name: 'Renommé', status: 'reserve', amount: 220, currency: 'USD' });
+  assert.equal(renamed.body.booking.fxRate, 1.1, 'montant modifié, même devise : taux conservé');
+  assert.equal(renamed.body.booking.amountEur, 200);
+});
+
+test('devises : taux manuel, devise inconnue, taux invalides', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+  const manual = (await bookingIn(t.id, c, { amount: 500, currency: 'USD', rate: '50' })).body.booking;
+  assert.equal(manual.amountEur, 10);
+  assert.equal(manual.fxSource, 'Saisi à la main');
+  assert.equal((await bookingIn(t.id, c, { amount: 5, currency: 'XYZ' })).status, 400);
+  assert.equal((await bookingIn(t.id, c, { amount: 5, currency: 'MAD' })).status, 400, 'seules EUR, USD et FCFA sont gérées');
+  assert.equal((await bookingIn(t.id, c, { amount: 5, currency: 'usd' })).status, 400, 'code en majuscules uniquement');
+  assert.equal((await bookingIn(t.id, c, { amount: 5, currency: 'USD', rate: '-3' })).status, 400);
+  assert.equal((await bookingIn(t.id, c, { amount: 5, currency: 'USD', rate: 'abc' })).status, 400);
+  assert.equal((await bookingIn(t.id, c, { amount: 5, currency: 'EUR', rate: '2' })).status, 400, 'pas de taux pour des euros');
+});
+
+test('devises : source indisponible → erreur claire, ou taux déjà mémorisé du jour', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+  await pool.query('DELETE FROM fx_rates');
+  rates.down = true;
+  try {
+    const fail = await bookingIn(t.id, c, { amount: 100, currency: 'USD' });
+    assert.equal(fail.status, 503);
+    assert.equal(fail.body.code, 'fx_unavailable');
+    assert.match(fail.body.error, /à la main/);
+    assert.equal((await bookingIn(t.id, c, { amount: 100, currency: 'USD', rate: '1.2' })).status, 201, 'le taux manuel dépanne');
+    assert.equal((await bookingIn(t.id, c, { amount: 100, currency: 'XAF' })).status, 201, 'le franc CFA ne dépend d\'aucune source');
+  } finally { rates.down = false; }
+  // BCE en panne : repli sur la seconde source ; puis, source coupée, le taux du jour est déjà mémorisé
+  rates.ecbDown = true;
+  try {
+    const b = (await bookingIn(t.id, c, { amount: 125, currency: 'USD' })).body.booking;
+    assert.equal(b.fxRate, 1.25);
+    assert.match(b.fxSource, /currency-api/);
+    rates.down = true;
+    assert.equal((await bookingIn(t.id, c, { amount: 12.5, currency: 'USD' })).status, 201);
+  } finally { rates.down = false; rates.ecbDown = false; }
+});
+
+test('devises : aperçu du taux et liste des devises', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const list = (await c.get('/api/fx')).body.currencies;
+  assert.deepEqual(list.map((x) => x.code), ['EUR', 'USD', 'XAF', 'XOF']);
+  const r = (await c.get('/api/fx/xaf')).body;
+  assert.equal(r.rate, 655.957);
+  assert.equal((await c.get('/api/fx/XYZ')).status, 503);
+  assert.equal((await client().get('/api/fx/USD')).status, 401);
+});
+
+test('paiements en devise : taux figé, total qui tombe juste au centime, pas de trop-payé', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+  const b = (await bookingIn(t.id, c, { amount: 100000, currency: 'XAF' })).body.booking; // 152,45 €
+  assert.equal(b.amountEur, 152.45);
+  const pay = (amount, date = '2026-11-01') => c.post(`/api/bookings/${b.id}/payments`, { amount, date });
+  assert.equal((await pay(50000)).status, 201);
+  const done = await pay(50000);
+  const eurs = done.body.booking.payments.map((p) => p.amountEur);
+  assert.equal(Math.round(eurs.reduce((s, x) => s + x, 0) * 100), 15245, 'la somme en euros = le montant exact de la réservation');
+  assert.equal((await pay(1)).status, 400, 'réservation soldée : plus rien à payer');
+
+  // Suppression du premier paiement : recalcul cohérent
+  const first = done.body.booking.payments[0];
+  const after = (await c.del(`/api/payments/${first.id}`)).body.booking;
+  assert.equal(after.payments.length, 1);
+  assert.equal(after.payments[0].amount, 50000);
+  assert.equal(after.payments[0].amountEur, 76.22);
+
+  // Devise figée tant qu'il y a des paiements
+  assert.equal((await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel', status: 'reserve', amount: 100000, currency: 'MAD' })).status, 400);
+  assert.equal((await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel', status: 'reserve', amount: 10000, currency: 'XAF' })).status, 400, 'montant < déjà payé');
+});
+
+test('devises : actualiser le taux recalcule réservation et paiements', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+  await pool.query('DELETE FROM fx_rates');
+  const b = (await bookingIn(t.id, c, { amount: 1100, currency: 'USD', rate: '11' })).body.booking; // 100 € au taux manuel
+  assert.equal(b.amountEur, 100);
+  await c.post(`/api/bookings/${b.id}/payments`, { amount: 550, date: '2026-11-01' });
+  const refreshed = (await c.put(`/api/bookings/${b.id}`, { category: 'logement', name: 'Hôtel', status: 'reserve', amount: 1100, currency: 'USD', refreshRate: true })).body.booking;
+  assert.equal(refreshed.fxRate, 1.1);
+  assert.equal(refreshed.amountEur, 1000);
+  assert.equal(refreshed.payments[0].amountEur, 500);
+});
+const round = (n) => Math.round(n * 100) / 100;

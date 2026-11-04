@@ -155,7 +155,7 @@ export function extract(html, pageUrl) {
   let amountEur = null;
   if (priceFound) {
     if (priceFound.currency === 'EUR') amountEur = priceFound.amount;
-    else warnings.push(priceFound.currency ? `Prix trouvé en ${priceFound.currency}, pas en euros.` : 'Prix trouvé sans devise indiquée.');
+    else if (!priceFound.currency) warnings.push('Prix trouvé sans devise indiquée.');
   }
   delete fields.amount;
   delete fields.currency;

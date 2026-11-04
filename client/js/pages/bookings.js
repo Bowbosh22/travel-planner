@@ -1,20 +1,21 @@
 import { api } from '../api.js';
 import { openDialog, confirmDialog } from '../components/dialog.js';
 import { openImport } from '../components/import-flow.js';
+import { amountFieldHtml, amountPayload, loadCurrencies, wireAmountField } from '../components/amount-field.js';
 import { toast } from '../components/toast.js';
 import { CATEGORIES, summarize } from '../services/budget.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
-import { formatMoney, formatLongDate, formatEUR, formatPercent } from '../lib/format.js';
+import { formatMoney, formatLongDate, formatEUR, formatPercent, formatCurrency, formatRate } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 
 export const title = 'Réservations';
 
 const STATUS = { reserve: 'Réservé', a_reserver: 'À réserver', annule: 'Annulé' };
-const paidOf = (b) => b.payments.reduce((s, p) => s + p.amountEur, 0);
+const paidOrig = (b) => b.payments.reduce((s, p) => s + p.amount, 0); // dans la devise de la réservation
 const round2 = (n) => Math.round(n * 100) / 100;
 
-const bookingForm = (b = {}) => html`
+const bookingForm = (b = {}, currencies = []) => html`
   <div class="form-grid">
     <div class="field span-2"><label for="b-name">Nom</label><input class="input" id="b-name" name="name" value="${b.name ?? ''}" placeholder="Vol aller-retour" maxlength="120" required></div>
     <div class="field"><label for="b-cat">Catégorie</label>
@@ -25,9 +26,8 @@ const bookingForm = (b = {}) => html`
       <select class="select full" id="b-status" name="status">
         ${Object.entries(STATUS).map(([id, label]) => html`<option value="${id}" ${(b.status ?? 'a_reserver') === id ? raw('selected') : ''}>${label}</option>`)}
       </select></div>
-    <div class="field span-2"><label for="b-amount">Montant total (€)</label>
-      <input class="input" id="b-amount" name="amountEur" inputmode="decimal" value="${b.amountEur ?? ''}" placeholder="Laissez vide si le prix n'est pas connu">
-      <small class="hint">Réservé et payé sont suivis séparément : ajoutez les paiements ensuite.</small></div>
+    ${amountFieldHtml(currencies, { amount: b.amount, currency: b.currency ?? 'EUR', editing: b.id ? b : null })}
+    <p class="hint span-2">Réservé et payé sont suivis séparément : ajoutez les paiements ensuite.</p>
     <div class="field span-2"><label for="b-loc">Lieu <span class="opt">(facultatif)</span></label><input class="input" id="b-loc" name="location" value="${b.location ?? ''}" maxlength="200"></div>
     <div class="field"><label for="b-start">Du</label><input class="input" id="b-start" name="startsOn" type="date" value="${b.startsOn ?? ''}"></div>
     <div class="field"><label for="b-end">Au</label><input class="input" id="b-end" name="endsOn" type="date" value="${b.endsOn ?? ''}"></div>
@@ -49,19 +49,22 @@ export async function mount(el) {
   }
 
   const row = (b) => {
-    const paid = paidOf(b);
-    const pct = b.amountEur ? Math.min((paid / b.amountEur) * 100, 100) : 0;
+    const foreign = b.currency !== 'EUR';
+    const paid = paidOrig(b);
+    const pct = b.amount ? Math.min((paid / b.amount) * 100, 100) : 0;
+    const money = (n) => formatCurrency(n, b.currency);
     return html`
       <li class="booking ${b.status === 'annule' ? 'is-cancelled' : ''}" data-id="${b.id}">
         <div class="booking-main">
           <div class="booking-name">${b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span></div>
           ${b.location || b.startsOn || b.sourceUrl ? html`<div class="booking-sub muted">${[b.location, b.startsOn ? (b.endsOn && b.endsOn !== b.startsOn ? `${formatLongDate(b.startsOn)} → ${formatLongDate(b.endsOn)}` : formatLongDate(b.startsOn)) : null].filter(Boolean).join(' · ')}${b.sourceUrl ? html`${b.location || b.startsOn ? ' · ' : ''}<a class="src-link" href="${b.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow">Voir le lien</a>` : ''}</div>` : ''}
-          ${b.amountEur === null
+          ${b.amount === null
             ? html`<div class="muted booking-sub">Prix à renseigner</div>`
-            : html`<div class="booking-sub muted">${formatMoney(paid)} payés sur ${formatMoney(b.amountEur)}</div>
+            : html`<div class="booking-sub muted">${money(paid)} payés sur ${money(b.amount)}</div>
+                   ${foreign ? html`<div class="booking-sub muted" title="Le taux est figé à l'enregistrement : il ne change plus ensuite.">≈ ${formatMoney(b.amountEur)} · taux figé du ${formatLongDate(b.fxDate)} : 1 € = ${formatRate(b.fxRate)} ${b.currency}</div>` : ''}
                    <div class="mini-bar" role="img" aria-label="${formatPercent(pct)} payé"><span style="width:${pct}%"></span></div>`}
         </div>
-        <div class="booking-amount">${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</div>
+        <div class="booking-amount">${b.amount === null ? '—' : money(b.amount)}${foreign && b.amount !== null ? html`<small>≈ ${formatMoney(b.amountEur)}</small>` : ''}</div>
         <div class="row-actions">
           <button type="button" class="btn btn-soft btn-sm" data-act="payments">Paiements</button>
           <button type="button" class="btn btn-ghost btn-sm" data-act="edit">Modifier</button>
@@ -103,11 +106,12 @@ export async function mount(el) {
     render();
   };
 
-  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, amountEur: v.amountEur?.trim() === '' ? null : v.amountEur, location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl });
+  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, ...amountPayload(v), location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl });
 
-  const openBookingForm = (existing) => openDialog({
+  const openBookingForm = async (existing) => openDialog({
     title: existing ? 'Modifier la réservation' : 'Nouvelle réservation',
-    content: bookingForm(existing),
+    content: bookingForm(existing, await loadCurrencies()),
+    onMount: (dlg) => wireAmountField(dlg, { editing: existing ?? null }),
     submitLabel: existing ? 'Enregistrer' : 'Ajouter',
     onSubmit: async (v) => {
       if (existing) await api.updateBooking(existing.id, payload(v));
@@ -127,18 +131,20 @@ export async function mount(el) {
         const body = dlg.querySelector('#pay-body');
         const draw = () => {
           const b = get();
-          const paid = paidOf(b);
-          const rest = b.amountEur === null ? 0 : round2(b.amountEur - paid);
+          const paid = paidOrig(b);
+          const cur = b.currency;
+          const money = (n) => formatCurrency(n, cur);
+          const rest = b.amount === null ? 0 : round2(b.amount - paid);
           body.innerHTML = String(html`
             <p><strong>${b.name}</strong></p>
-            <p class="muted">${b.amountEur === null ? 'Renseignez d\'abord le montant de la réservation pour enregistrer un paiement.' : `${formatMoney(paid)} payés sur ${formatMoney(b.amountEur)} · reste ${formatMoney(rest)}`}</p>
+            <p class="muted">${b.amount === null ? 'Renseignez d\'abord le montant de la réservation pour enregistrer un paiement.' : `${money(paid)} payés sur ${money(b.amount)} · reste ${money(rest)}`}${cur !== 'EUR' ? ` · converti au taux figé de la réservation (1 € = ${formatRate(b.fxRate)} ${cur})` : ''}</p>
             ${b.payments.length ? html`<ul class="pay-list">${b.payments.map((p) => html`
-              <li data-pid="${p.id}"><span>${formatLongDate(p.date)}</span><strong>${formatMoney(p.amountEur)}</strong>
+              <li data-pid="${p.id}"><span>${formatLongDate(p.date)}</span><strong>${money(p.amount)}${cur !== 'EUR' ? html` <small class="muted">≈ ${formatMoney(p.amountEur)}</small>` : ''}</strong>
                 <button type="button" class="btn btn-ghost btn-sm danger-text" data-pay-del aria-label="Supprimer le paiement du ${formatLongDate(p.date)}">Supprimer</button></li>`)}</ul>` : html`<p class="muted pay-empty">Aucun paiement enregistré.</p>`}
-            ${b.amountEur !== null && rest > 0 ? html`
+            ${b.amount !== null && rest > 0 ? html`
               <div class="form-grid pay-form">
                 <div class="field"><label for="p-date">Date</label><input class="input" id="p-date" type="date" value="${today}"></div>
-                <div class="field"><label for="p-amount">Montant (€)</label><input class="input" id="p-amount" inputmode="decimal" value="${rest}"></div>
+                <div class="field"><label for="p-amount">Montant (${cur})</label><input class="input" id="p-amount" inputmode="decimal" value="${rest}"></div>
                 <div class="field span-2"><button type="button" class="btn btn-primary" data-pay-add>Ajouter ce paiement</button></div>
               </div>` : ''}`);
         };
@@ -147,7 +153,7 @@ export async function mount(el) {
           showError('');
           try {
             if (e.target.closest('[data-pay-add]')) {
-              apply(await api.addPayment(id, { date: body.querySelector('#p-date').value, amountEur: body.querySelector('#p-amount').value }));
+              apply(await api.addPayment(id, { date: body.querySelector('#p-date').value, amount: body.querySelector('#p-amount').value }));
             } else if (e.target.closest('[data-pay-del]')) {
               apply(await api.deletePayment(e.target.closest('[data-pid]').dataset.pid));
             }
@@ -169,7 +175,7 @@ export async function mount(el) {
       case 'edit': return openBookingForm(b);
       case 'payments': return openPayments(id);
       case 'duplicate':
-        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amountEur: b.amountEur, location: b.location, startsOn: b.startsOn, endsOn: b.endsOn, sourceUrl: b.sourceUrl })
+        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amount: b.amount, currency: b.currency, location: b.location, startsOn: b.startsOn, endsOn: b.endsOn, sourceUrl: b.sourceUrl })
           .then(() => { toast('Réservation dupliquée (sans paiement).'); return load(); })
           .catch((err) => toast(err.message));
       case 'delete':

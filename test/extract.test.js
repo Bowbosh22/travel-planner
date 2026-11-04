@@ -24,7 +24,7 @@ test('prix dans une autre devise : jamais présenté comme des euros', () => {
   const r = extract(page(ld({ '@type': 'Hotel', name: 'Hotel NY', offers: { price: 300, priceCurrency: 'USD' } })), URL_);
   assert.equal(r.amountEur, null);
   assert.deepEqual(r.priceFound, { amount: 300, currency: 'USD' });
-  assert.ok(r.warnings.some((w) => w.includes('USD')));
+  assert.equal(r.priceFound.currency, 'USD');
 });
 
 test('prix sans devise : pas d\'euros supposés', () => {

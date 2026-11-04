@@ -55,6 +55,10 @@ export const api = {
   // Import par lien : renvoie ce qui est écrit sur la page, sans rien inventer
   importUrl: async (url) => (await request('POST', '/import', { url })).result,
 
+  // Devises
+  currencies: () => (api._cur ??= request('GET', '/fx').then((d) => d.currencies).catch((e) => { api._cur = null; throw e; })),
+  fxRate: (code) => request('GET', `/fx/${encodeURIComponent(code)}`),
+
   // Réservations et paiements
   listBookings: async (tripId) => (await request('GET', `/trips/${tripId}/bookings`)).bookings,
   createBooking: async (tripId, b) => (await request('POST', `/trips/${tripId}/bookings`, b)).booking,

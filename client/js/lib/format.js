@@ -20,3 +20,13 @@ export const plural = (n, one, many) => (n > 1 ? many : one);
 
 // Montants entiers sans décimales, sinon avec centimes (650,50 €).
 export const formatMoney = (n) => (Number.isInteger(n) ? formatEUR(n) : formatEURCents(n));
+
+// Montant dans une devise quelconque (« 100 000 FCFA », « 85,00 $US »...).
+export function formatCurrency(amount, code) {
+  try {
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code }).format(amount);
+  } catch {
+    return `${amount} ${code}`;
+  }
+}
+export const formatRate = (rate) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 4 }).format(rate);

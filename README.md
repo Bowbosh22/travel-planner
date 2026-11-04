@@ -2,7 +2,7 @@
 
 Application web pour organiser ses voyages et suivre son budget en euros.
 
-**État : étape 4 sur 8** — import intelligent par lien, comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
+**État : étape 5 sur 8** — devises converties en euros (taux figés), import intelligent par lien, comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
 
 ## Lancer en local
 
@@ -18,11 +18,20 @@ Les tables sont créées automatiquement au démarrage (`server/migrations/`). P
 Tests : `npm test` (calculs budgétaires). Les tests de l'API tournent aussi si vous fournissez une base **vide dédiée aux tests** :
 `TEST_DATABASE_URL=postgres://... npm test` (⚠ cette base est effacée à chaque lancement).
 
+## Devises
+
+Chaque réservation garde son **montant d'origine**, sa **devise** et le **taux figé** au jour de l'enregistrement ; le budget, les graphiques et les alertes travaillent en euros. Le taux ne bouge plus ensuite, même si le marché évolue : modifier le montant garde le même taux. Il change seulement si vous changez de devise, saisissez un taux à la main ou cochez « Actualiser le taux ».
+
+- Franc CFA (XAF et XOF) : parité fixe officielle, 1 € = 655,957 F CFA, sans appel réseau.
+- Devises gérées : **euro, dollar américain (USD) et franc CFA (XAF, XOF)**, volontairement. Dollar : BCE via Frankfurter, puis API communautaire currency-api (jsDelivr, puis pages.dev) en secours. Chaque taux du jour est mémorisé (table `fx_rates`) ; si toutes les sources sont en panne, le dernier taux connu des 10 derniers jours est utilisé et daté, sinon une erreur invite à saisir le taux à la main.
+- Paiements : saisis dans la devise de la réservation, convertis au taux figé de la réservation. Le dernier paiement qui solde la réservation reprend exactement son montant en euros (aucun écart d'un centime).
+- Devise non modifiable tant que la réservation a des paiements.
+
 ## Import par lien
 
 Bouton « Importer depuis un lien » : l'adresse d'une page (hôtel, restaurant, activité, vol...) est lue par le serveur, qui en extrait **uniquement ce qui y est écrit** (données structurées JSON-LD, puis Open Graph, puis titre). Un écran de vérification s'affiche avant tout ajout ; un champ introuvable reste vide, rien n'est deviné.
 
-- Prix dans une autre devise : signalé, jamais pris pour des euros (conversion à l'étape 5).
+- Prix trouvé dans une devise gérée : montant et devise préremplis, converti en euros avec un taux figé. Devise absente ou non gérée : signalé, jamais pris pour des euros.
 - Captcha, connexion obligatoire, limite d'accès : le site est signalé comme non lisible, **jamais contourné**. Beaucoup de grandes plateformes de réservation refusent les robots : saisissez alors la réservation à la main (le lien peut être conservé).
 - Sécurité : seules les adresses http/https des ports 80/443 sont acceptées ; réseau privé, localhost et adresses de métadonnées cloud sont refusés à chaque redirection et à la connexion réelle ; taille (1,5 Mo), durée (8 s) et redirections (4) limitées ; 10 analyses par minute et par utilisateur.
 
@@ -35,6 +44,8 @@ server/auth.js           Inscription, connexion, sessions (cookie httpOnly), ant
 server/routes/trips.js   Voyages, réservations, paiements (toujours filtrés par utilisateur)
 server/routes/import.js  Route d'import par lien
 server/importer/         Lecture sécurisée (anti-SSRF), extraction JSON-LD / Open Graph
+server/fx/rates.js       Taux de change, parités fixes, cache, secours
+server/routes/fx.js      Liste des devises et aperçu du taux
 server/migrations/       Schéma SQL versionné
 client/
   index.html             Coquille de l'application
@@ -48,6 +59,7 @@ client/
   js/pages/              Dashboard, Paramètres (Apparence), sections à venir
 test/budget.test.js      Tests des règles budgétaires
 test/api.test.js         Tests de l'API (auth, isolation entre comptes, paiements, import)
+test/fx.test.js          Taux de change (sources, secours, cache, valeurs absurdes)
 test/ssrf.test.js        Adresses interdites (privées, locales, écritures déguisées)
 test/extract.test.js     Extraction des informations d'une page
 test/import.test.js      Import sur de faux sites (captcha, redirections, pages géantes...)

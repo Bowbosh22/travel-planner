@@ -1,5 +1,7 @@
 // Validation des entrées : chaque fonction renvoie { value } ou { error } (message en français).
 
+import { isSupportedCurrency } from './fx/rates.js';
+
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,10 +23,10 @@ const text = (v, label, { max = 120, required = true } = {}) => {
   return { value: s };
 };
 
-const money = (v, label, { nullable = false } = {}) => {
+const money = (v, label, { nullable = false, max = 10_000_000 } = {}) => {
   if (v === null || v === '' || v === undefined) return nullable ? { value: null } : { error: `${label} est obligatoire.` };
   const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
-  if (!Number.isFinite(n) || n < 0 || n > 10_000_000) return { error: `${label} doit être un montant positif.` };
+  if (!Number.isFinite(n) || n < 0 || n > max) return { error: `${label} doit être un montant positif.` };
   return { value: Math.round(n * 100) / 100 };
 };
 
@@ -78,7 +80,7 @@ const sourceUrl = (v) => {
 export function validateBooking(body = {}) {
   const r = collect({
     name: text(body.name, 'Le nom de la réservation'),
-    amountEur: money(body.amountEur, 'Le montant', { nullable: true }),
+    amount: money(body.amount, 'Le montant', { nullable: true, max: 100_000_000_000 }),
     location: optional(body.location, (v) => text(v, 'Le lieu', { max: 200 })),
     sourceUrl: optional(body.sourceUrl, sourceUrl),
     startsOn: optional(body.startsOn, (v) => (isIsoDate(v) ? { value: v } : { error: 'La date de début est invalide.' })),
@@ -89,15 +91,25 @@ export function validateBooking(body = {}) {
   if (!CATEGORIES.includes(body.category)) return { error: 'Catégorie invalide.' };
   const status = body.status ?? 'a_reserver';
   if (!BOOKING_STATUSES.includes(status)) return { error: 'Statut de réservation invalide.' };
-  return { value: { ...r.value, category: body.category, status } };
+  const currency = body.currency === undefined || body.currency === '' ? 'EUR' : body.currency;
+  if (!isSupportedCurrency(currency)) return { error: 'Devise non prise en charge.' };
+  // Taux manuel facultatif : nombre d'unités de la devise pour 1 €.
+  let manualRate = null;
+  if (body.rate !== undefined && body.rate !== null && String(body.rate).trim() !== '') {
+    const n = Number(String(body.rate).replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0 || n > 1e7) return { error: 'Le taux de change doit être un nombre positif.' };
+    if (currency === 'EUR') return { error: 'Pas de taux de change pour une réservation en euros.' };
+    manualRate = n;
+  }
+  return { value: { ...r.value, category: body.category, status, currency, manualRate, refreshRate: body.refreshRate === true } };
 }
 
 export function validatePayment(body = {}) {
-  const amount = money(body.amountEur, 'Le montant payé');
+  const amount = money(body.amount, 'Le montant payé', { max: 100_000_000_000 });
   if (amount.error) return amount;
   if (amount.value <= 0) return { error: 'Le montant payé doit être supérieur à 0.' };
   if (!isIsoDate(body.date)) return { error: 'La date du paiement est invalide.' };
-  return { value: { amountEur: amount.value, date: body.date } };
+  return { value: { amount: amount.value, date: body.date } };
 }
 
 export function validateRegistration(body = {}) {
