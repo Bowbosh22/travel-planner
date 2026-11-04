@@ -46,6 +46,7 @@ export async function mount(el, { user } = {}) {
         <button type="button" class="btn btn-soft btn-sm" data-act="bookings">Réservations</button>
         <button type="button" class="btn btn-ghost btn-sm" data-act="edit">Modifier</button>
         <button type="button" class="btn btn-ghost btn-sm" data-act="share">Partager</button>
+        <a class="btn btn-ghost btn-sm" href="/api/trips/${t.id}/export.pdf" download>PDF</a>
         ${t.role === 'member' ? '' : html`<button type="button" class="btn btn-ghost btn-sm danger-text" data-act="delete">Supprimer</button>`}
       </div>
     </article>`;

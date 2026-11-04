@@ -1,6 +1,8 @@
 import express from 'express';
 import { UUID, validateBooking, validatePayment, validateTrip, validateCompanions } from '../validate.js';
 import { FxError, round2, toEur } from '../fx/rates.js';
+import { buildRecapPdf } from '../pdf/recap.js';
+import { rateLimit } from '../ratelimit.js';
 import { canAccess, newInviteToken } from '../access.js';
 
 const eur = (n) => `${n.toFixed(2).replace('.', ',')} €`;
@@ -92,6 +94,21 @@ export function createTripRoutes(pool, fx, images) {
     const { rows } = await pool.query(`${BOOKING_SELECT} WHERE b.id = $1 AND ${canAccess('t', '$2')} GROUP BY b.id`, [id, userId]);
     return rows[0] ? bookingOut(rows[0]) : null;
   }
+
+  // ---- Export PDF (récapitulatif) ----
+  router.get('/trips/:id/export.pdf', rateLimit({ max: 20, windowMs: 60 * 1000, message: 'Trop d\'exports. Réessayez dans une minute.' }), async (req, res, next) => {
+    try {
+      const { rows } = await pool.query(`SELECT * FROM trips t WHERE t.id=$1 AND ${canAccess('t', '$2')}`, [req.params.id, req.user.id]);
+      if (!rows[0]) return notFound(res);
+      const trip = await presentOne(rows[0], req.user.id);
+      const { rows: bk } = await pool.query(`${BOOKING_SELECT} WHERE b.trip_id = $1 AND ${canAccess('t', '$2')} GROUP BY b.id ORDER BY b.created_at`, [req.params.id, req.user.id]);
+      const slug = String(trip.name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'voyage';
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="recap-${slug}.pdf"; filename*=UTF-8''${encodeURIComponent(`Récapitulatif - ${trip.name}.pdf`)}`);
+      res.setHeader('Cache-Control', 'private, no-store');
+      buildRecapPdf({ trip, members: trip.members, bookings: bk.map(bookingOut) }).pipe(res);
+    } catch (err) { next(err); }
+  });
 
   // ---- Voyages ----
   router.get('/trips', async (req, res, next) => {

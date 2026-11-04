@@ -693,3 +693,19 @@ test('voyage partagé : lien d\'invitation, accès commun, suppression réservé
     assert.equal((await signup(client(), 'share-zed@test.fr', { invite: token })).status, 403);
   } finally { delete process.env.ALLOW_REGISTRATION; }
 });
+
+test('export PDF : récapitulatif réservé aux membres, fichier PDF valide', { skip }, async () => {
+  const owner = client(); await signup(owner, 'pdf-own@test.fr', { firstName: 'Paul' });
+  const t = (await owner.post('/api/trips', { ...trip, name: 'Été à Lisbonne' })).body.trip;
+  await owner.post(`/api/trips/${t.id}/bookings`, { category: 'billets', name: 'Vol Paris → Lisbonne', amount: 1234.5, status: 'reserve', startsOn: '2026-12-12' });
+  await owner.post(`/api/trips/${t.id}/bookings`, { category: 'logement', name: 'Hôtel Alfama', amount: 650, status: 'reserve', startsOn: '2026-12-12', endsOn: '2026-12-19', location: 'Rua das Escolas 12' });
+  const ok = await owner.file(`/api/trips/${t.id}/export.pdf`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get('content-type'), 'application/pdf');
+  assert.match(ok.headers.get('content-disposition'), /attachment/);
+  assert.equal(ok.buf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(ok.buf.length > 1500);
+  const stranger = client(); await signup(stranger, 'pdf-str@test.fr');
+  assert.equal((await stranger.file(`/api/trips/${t.id}/export.pdf`)).status, 404);
+  assert.equal((await client().file(`/api/trips/${t.id}/export.pdf`)).status, 401);
+});

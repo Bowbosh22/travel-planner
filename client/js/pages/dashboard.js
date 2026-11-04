@@ -113,6 +113,7 @@ export async function mount(el, { user }) {
         <p>${trips.length} ${plural(trips.length, 'voyage organisé', 'voyages organisés')} · ${todayLong()}</p>
       </div>
       <div class="page-actions">
+        <a class="btn btn-soft" href="/api/trips/${trip.id}/export.pdf" download title="Récapitulatif du voyage en PDF">Exporter en PDF</a>
         <label class="sr-only" for="trip-select">Voyage affiché</label>
         <select id="trip-select" class="select">
           ${trips.map((t) => html`<option value="${t.id}" ${t.id === trip.id ? raw('selected') : ''}>${t.name}</option>`)}
