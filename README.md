@@ -2,7 +2,7 @@
 
 Application web pour organiser ses voyages et suivre son budget en euros.
 
-**État : étape 6 sur 8** — page Budget, simulateur et alerte de dépassement, devises converties en euros (taux figés), import intelligent par lien, comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
+**État : étape 7 sur 8** — page Budget, simulateur et alerte de dépassement, devises converties en euros (taux figés), import intelligent par lien, comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
 
 ## Lancer en local
 
@@ -41,6 +41,12 @@ Bouton « Importer depuis un lien » : l'adresse d'une page (hôtel, restaurant,
 - **Simulateur** : retirer des réservations (ou une catégorie), saisir un autre montant, appliquer une variation en %, changer le budget, ajouter une dépense hypothétique. **Rien n'est enregistré** ; les paiements déjà faits restent réels.
 - **Dépassement** : quand le budget est dépassé, un bandeau rouge s'affiche en haut du dashboard, des réservations et du budget (masquable, il réapparaît si le dépassement augmente) et un avertissement apparaît dès qu'une action fait dépasser ou aggrave le dépassement.
 
+## Documents, planning et carte
+
+- **Documents** : billets, confirmations et factures (PDF, JPG, PNG, WebP, 5 Mo par fichier, 200 Mo par compte), liés à une réservation ou au voyage. Ils sont rangés dans la base PostgreSQL : gratuit, aucun service en plus (Cloudflare R2 demande une carte bancaire). Le type est déterminé par le **contenu** du fichier, jamais par son nom ; les images sont servies sous restrictions strictes ; chaque fichier n'est accessible qu'à son propriétaire. Le stockage est isolé dans `server/storage/documents.js` : un autre stockage pourra le remplacer.
+- **Planning** : calendrier mensuel ou vue jour par jour avec les réservations datées et les paiements ; les réservations sans date sont listées à part.
+- **Carte** : Leaflet + OpenStreetMap (gratuit, sans compte). Le lieu de chaque réservation est converti en coordonnées par Nominatim (une requête par seconde maximum, résultat mémorisé : un lieu n'est cherché qu'une fois). Lieu introuvable = signalé, jamais deviné.
+
 ## Favori d'import (Airbnb, Booking...)
 
 Paramètres → « Importer depuis mon navigateur » : on glisse un bouton dans la barre de favoris. Sur une annonce ouverte dans **votre** navigateur (dates choisies), un clic lit ce qui est affiché (nom, lieu, total avec devise, dates de l'adresse) et ouvre Travel Planner avec une réservation préremplie à vérifier. Les données passent dans la partie `#` de l'adresse (jamais envoyée à un serveur) et sont revalidées à la réception. Champ introuvable = champ vide ; un prix « par nuit » n'est jamais pris pour le total ; une devise ambiguë (« $ » seul) est à choisir.
@@ -56,6 +62,10 @@ server/routes/import.js  Route d'import par lien
 server/importer/         Lecture sécurisée (anti-SSRF), extraction JSON-LD / Open Graph
 server/fx/rates.js       Taux de change, parités fixes, cache, secours
 server/routes/fx.js      Liste des devises et aperçu du taux
+server/routes/documents.js  Documents (envoi, liste, téléchargement, suppression)
+server/storage/          Stockage des documents (dans PostgreSQL)
+server/routes/geo.js     Coordonnées des lieux (carte)
+server/geo/nominatim.js  Géocodage OpenStreetMap, une requête par seconde
 server/migrations/       Schéma SQL versionné
 client/
   index.html             Coquille de l'application
@@ -72,6 +82,7 @@ test/api.test.js         Tests de l'API (auth, isolation entre comptes, paiement
 test/fx.test.js          Taux de change (sources, secours, cache, valeurs absurdes)
 test/capture.test.js     Favori d'import (lecture de la page, revalidation)
 test/simulation.test.js  Simulateur et avis de dépassement
+test/planning.test.js    Planning jour par jour
 test/ssrf.test.js        Adresses interdites (privées, locales, écritures déguisées)
 test/extract.test.js     Extraction des informations d'une page
 test/import.test.js      Import sur de faux sites (captcha, redirections, pages géantes...)

@@ -30,3 +30,9 @@ export function formatCurrency(amount, code) {
   }
 }
 export const formatRate = (rate) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 4 }).format(rate);
+
+export function formatBytes(n) {
+  if (n < 1024) return `${n} o`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} Ko`;
+  return `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0).replace('.', ',')} Mo`;
+}

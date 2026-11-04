@@ -11,8 +11,5 @@ export const NAV = [
 ];
 
 // Sections pas encore développées : la page indique l'étape prévue.
-export const PLACEHOLDERS = {
-  '/planning': { step: 7, text: 'Vue calendrier et vue quotidienne de votre séjour.' },
-  '/carte': { step: 7, text: 'Hôtels, restaurants et activités sur une carte interactive.' },
-  '/documents': { step: 7, text: 'Billets, confirmations et factures rattachés à chaque réservation.' },
-};
+// Toutes les sections existent : plus de page « à venir ».
+export const PLACEHOLDERS = {};

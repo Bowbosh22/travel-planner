@@ -29,6 +29,28 @@ async function request(method, path, body) {
   return data;
 }
 
+// Envoi d'un fichier : le contenu est le corps de la requête, le nom et la réservation liée sont dans l'adresse.
+async function uploadFile(tripId, file, bookingId) {
+  const qs = new URLSearchParams({ name: file.name });
+  if (bookingId) qs.set('bookingId', bookingId);
+  let res;
+  try {
+    res = await fetch(`/api/trips/${tripId}/documents?${qs}`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'tp', 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+  } catch {
+    throw new ApiError('Connexion impossible. Vérifiez votre réseau.', 0);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new CustomEvent('unauthorized'));
+    throw new ApiError(data.error || 'Envoi impossible.', res.status);
+  }
+  return data.document;
+}
+
 const pad = (n) => String(n).padStart(2, '0');
 
 export const api = {
@@ -66,4 +88,10 @@ export const api = {
   deleteBooking: (id) => request('DELETE', `/bookings/${id}`),
   addPayment: async (bookingId, p) => (await request('POST', `/bookings/${bookingId}/payments`, p)).booking,
   deletePayment: async (id) => (await request('DELETE', `/payments/${id}`)).booking,
+
+  // Documents et carte
+  listDocuments: (tripId) => request('GET', `/trips/${tripId}/documents`),
+  uploadDocument: uploadFile,
+  deleteDocument: (id) => request('DELETE', `/documents/${id}`),
+  geocodeBooking: (id) => request('POST', `/bookings/${id}/geocode`),
 };

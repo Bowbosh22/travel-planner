@@ -23,20 +23,34 @@ const fetchJson = async (url) => {
   throw new Error('inconnu');
 };
 
+// Faux géocodeur : aucun appel réseau dans les tests.
+const geo = { calls: 0, down: false };
+const fakeGeocoder = {
+  geocode: async (q) => {
+    geo.calls += 1;
+    if (geo.down) throw new Error('hors ligne');
+    return q.includes('Nulle part') ? null : { lat: 38.7223, lng: -9.1393 };
+  },
+};
+
 // Mini client HTTP avec « cookie jar » : un client = un navigateur.
 function client() {
   let cookie = '';
   const call = async (method, path, body, headers = {}) => {
     const res = await fetch(base + path, {
       method,
-      headers: { 'content-type': 'application/json', 'x-requested-with': 'tp', ...(cookie ? { cookie } : {}), ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { 'content-type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json', 'x-requested-with': 'tp', ...(cookie ? { cookie } : {}), ...headers },
+      body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body),
     });
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0].endsWith('=') ? '' : set.split(';')[0];
     return { status: res.status, setCookie: set, body: await res.json().catch(() => null) };
   };
-  return { get: (p) => call('GET', p), post: (p, b) => call('POST', p, b ?? {}), put: (p, b) => call('PUT', p, b), del: (p) => call('DELETE', p), raw: call };
+  const file = async (path) => {
+    const res = await fetch(base + path, { headers: { ...(cookie ? { cookie } : {}) } });
+    return { status: res.status, headers: res.headers, buf: Buffer.from(await res.arrayBuffer()) };
+  };
+  return { file, upload: (p, buf) => call('POST', p, buf), get: (p) => call('GET', p), post: (p, b) => call('POST', p, b ?? {}), put: (p, b) => call('PUT', p, b), del: (p) => call('DELETE', p), raw: call };
 }
 
 const trip = { name: 'Lisbonne', destination: 'Lisbonne', country: 'Portugal', startDate: '2026-12-12', endDate: '2026-12-19', travelers: 2, budgetEur: 2000 };
@@ -47,7 +61,7 @@ before(async () => {
   pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  server = createApp(pool, { isProd: false, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
+  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
@@ -354,3 +368,119 @@ test('devises : actualiser le taux recalcule réservation et paiements', { skip 
   assert.equal(refreshed.payments[0].amountEur, 500);
 });
 const round = (n) => Math.round(n * 100) / 100;
+
+
+// ---- Étape 7 : documents et carte ----
+const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(200, 0x20)]);
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(50)]);
+
+test('documents : envoi, liste, téléchargement sécurisé, suppression', { skip }, async () => {
+  const c = client();
+  await signup(c, 'docs@test.fr');
+  const t = (await c.post('/api/trips', trip)).body.trip;
+  const b = (await c.post(`/api/trips/${t.id}/bookings`, { name: 'Vol', category: 'billets', status: 'reserve', amount: 100 })).body.booking;
+
+  const up = await c.upload(`/api/trips/${t.id}/documents?name=${encodeURIComponent('Billet aller.pdf')}&bookingId=${b.id}`, PDF);
+  assert.equal(up.status, 201);
+  assert.equal(up.body.document.mime, 'application/pdf');
+  assert.equal(up.body.document.name, 'Billet aller.pdf');
+
+  const list = (await c.get(`/api/trips/${t.id}/documents`)).body;
+  assert.equal(list.documents.length, 1);
+  assert.equal(list.documents[0].bookingName, 'Vol');
+  assert.equal(list.usedBytes, PDF.length);
+
+  const file = await c.file(`/api/documents/${up.body.document.id}/file`);
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get('content-type'), 'application/pdf');
+  assert.equal(file.headers.get('x-content-type-options'), 'nosniff');
+  assert.ok(file.buf.equals(PDF));
+  const dl = await c.file(`/api/documents/${up.body.document.id}/file?download=1`);
+  assert.match(dl.headers.get('content-disposition'), /^attachment; filename\*=UTF-8''Billet%20aller\.pdf$/);
+
+  const png = await c.upload(`/api/trips/${t.id}/documents?name=photo`, PNG);
+  assert.equal(png.body.document.name, 'photo.png', 'extension ajoutée d\'après le contenu');
+  assert.match((await c.file(`/api/documents/${png.body.document.id}/file`)).headers.get('content-security-policy'), /sandbox/);
+
+  // la réservation supprimée ne supprime pas le document, il reste rattaché au voyage
+  await c.del(`/api/bookings/${b.id}`);
+  const after = (await c.get(`/api/trips/${t.id}/documents`)).body.documents.find((d) => d.id === up.body.document.id);
+  assert.equal(after.bookingId, null);
+
+  assert.equal((await c.del(`/api/documents/${up.body.document.id}`)).status, 200);
+  assert.equal((await c.file(`/api/documents/${up.body.document.id}/file`)).status, 404);
+  // le voyage supprimé emporte ses documents
+  await c.del(`/api/trips/${t.id}`);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM documents')).rows[0].n, 0);
+});
+
+test('documents : le contenu décide du type, taille limitée, noms nettoyés', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'docs@test.fr', password: 'motdepasse-long' });
+  const t = (await c.post('/api/trips', trip)).body.trip;
+  const base = `/api/trips/${t.id}/documents`;
+  assert.equal((await c.upload(`${base}?name=virus.pdf`, Buffer.from('<script>alert(1)</script>'))).status, 415, 'faux PDF refusé');
+  assert.equal((await c.upload(`${base}?name=x.pdf`, Buffer.from('<svg onload=alert(1)>'))).status, 415, 'SVG refusé');
+  assert.equal((await c.upload(base, Buffer.alloc(0))).status, 400);
+  const big = Buffer.concat([Buffer.from('%PDF-'), Buffer.alloc(5 * 1024 * 1024)]);
+  assert.equal((await c.upload(base, big)).status, 413);
+  assert.equal((await c.upload(`${base}?bookingId=00000000-0000-4000-8000-000000000000`, PDF)).status, 400, 'réservation inconnue');
+  const odd = await c.upload(`${base}?name=${encodeURIComponent('../../etc/passwd\u202e<b>.pdf')}`, PDF);
+  assert.equal(odd.status, 201);
+  assert.doesNotMatch(odd.body.document.name, /[\\/<>\u202e]/);
+  // en-tête CSRF obligatoire
+  const noCsrf = await fetch(base.replace(/^/, `${'http://127.0.0.1:' + server.address().port}`), { method: 'POST', body: PDF });
+  assert.equal(noCsrf.status, 403);
+});
+
+test('documents : isolation entre utilisateurs', { skip }, async () => {
+  const a = client();
+  await a.post('/api/auth/login', { email: 'docs@test.fr', password: 'motdepasse-long' });
+  const t = (await a.get('/api/trips')).body.trips[0];
+  const doc = (await a.get(`/api/trips/${t.id}/documents`)).body.documents[0];
+  const other = client();
+  await signup(other, 'autre-docs@test.fr');
+  assert.equal((await other.file(`/api/documents/${doc.id}/file`)).status, 404);
+  assert.equal((await other.del(`/api/documents/${doc.id}`)).status, 404);
+  assert.equal((await other.get(`/api/trips/${t.id}/documents`)).status, 404);
+  assert.equal((await other.upload(`/api/trips/${t.id}/documents`, PDF)).status, 404);
+  assert.equal((await client().get(`/api/trips/${t.id}/documents`)).status, 401, 'connexion obligatoire');
+});
+
+test('carte : lieu géocodé une seule fois, introuvable mémorisé, service en panne sans effet', { skip }, async () => {
+  const c = client();
+  await signup(c, 'carte@test.fr');
+  const t = (await c.post('/api/trips', trip)).body.trip;
+  const mk = async (location) => (await c.post(`/api/trips/${t.id}/bookings`, { name: 'Hôtel', category: 'logement', status: 'reserve', amount: 100, ...(location ? { location } : {}) })).body.booking;
+  const ok = await mk('Alfama, Lisbonne');
+  assert.equal(ok.geoDone, false);
+  assert.equal(ok.lat, null);
+  geo.calls = 0;
+  const g = await c.post(`/api/bookings/${ok.id}/geocode`);
+  assert.deepEqual([g.body.found, g.body.lat], [true, 38.7223]);
+  await c.post(`/api/bookings/${ok.id}/geocode`);
+  assert.equal(geo.calls, 1, 'résultat mémorisé : un seul appel');
+  const reload = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.find((x) => x.id === ok.id);
+  assert.deepEqual([reload.geoDone, reload.lat, reload.lng], [true, 38.7223, -9.1393]);
+
+  // le lieu change : les anciennes coordonnées sont ignorées
+  await c.put(`/api/bookings/${ok.id}`, { category: 'logement', name: 'Hôtel', status: 'reserve', amount: 100, location: 'Sintra' });
+  const moved = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.find((x) => x.id === ok.id);
+  assert.deepEqual([moved.geoDone, moved.lat], [false, null]);
+
+  const none = await mk('Nulle part 12');
+  assert.equal((await c.post(`/api/bookings/${none.id}/geocode`)).body.found, false);
+  assert.equal((await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.find((x) => x.id === none.id).geoDone, true, 'introuvable mémorisé');
+
+  const later = await mk('Porto');
+  geo.down = true;
+  try {
+    assert.equal((await c.post(`/api/bookings/${later.id}/geocode`)).status, 503);
+  } finally { geo.down = false; }
+  assert.equal((await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.find((x) => x.id === later.id).geoDone, false, 'panne : on pourra réessayer');
+
+  assert.equal((await c.post(`/api/bookings/${(await mk()).id}/geocode`)).status, 400, 'sans lieu');
+  const intruder = client();
+  await signup(intruder, 'intrus-carte@test.fr');
+  assert.equal((await intruder.post(`/api/bookings/${ok.id}/geocode`)).status, 404);
+});

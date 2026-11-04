@@ -7,11 +7,14 @@ import { createTripRoutes } from './routes/trips.js';
 import { createImportRoutes } from './routes/import.js';
 import { createFxRoutes } from './routes/fx.js';
 import { createFxService } from './fx/rates.js';
+import { createDocumentRoutes } from './routes/documents.js';
+import { createGeoRoutes } from './routes/geo.js';
+import { createGeocoder } from './geo/nominatim.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // importOptions : réservé aux tests (autoriser un serveur local). Jamais piloté par une variable d'environnement.
-export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool) } = {}) {
+export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder() } = {}) {
   const app = express();
   app.disable('x-powered-by');
   if (isProd) app.set('trust proxy', 1); // Railway : HTTPS terminé en amont
@@ -25,7 +28,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
           scriptSrc: ["'self'"],
           styleSrc: ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
           fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-          imgSrc: ["'self'", 'data:', 'https:'],
+          imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org'], // fonds de carte OpenStreetMap
           connectSrc: ["'self'"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
@@ -60,18 +63,20 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
   const auth = createAuth(pool, { secureCookie: isProd });
   api.use(auth.loadUser);
   api.use('/auth', auth.router);
-  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx));
+  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder));
 
   api.use((_req, res) => res.status(404).json({ error: 'Introuvable.' }));
   // JSON invalide, etc. : jamais de trace technique envoyée au navigateur.
   // eslint-disable-next-line no-unused-vars
   api.use((err, _req, res, _next) => {
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Requête invalide.' });
+    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Fichier trop volumineux (5 Mo maximum).' });
     console.error(err);
     res.status(500).json({ error: 'Erreur interne. Réessayez.' });
   });
   app.use('/api', api);
 
+  app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), { maxAge: '1d' }));
   app.use('/vendor/chart.js', express.static(path.join(root, 'node_modules', 'chart.js', 'dist'), { maxAge: '1d' }));
   app.use(express.static(path.join(root, 'client'), { extensions: ['html'] }));
   app.use((_req, res) => res.status(404).type('text/plain').send('Page introuvable'));

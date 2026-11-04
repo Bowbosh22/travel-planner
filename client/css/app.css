@@ -280,3 +280,45 @@ svg { flex: none; }
   .sim-results { position: static; order: -1; }
   .summary-strip.three { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---- Étape 7 : documents, planning, carte ---- */
+.file-input { height: auto; padding: 10px 14px; }
+.small-line { font-size: 12px; }
+.doc-list { display: flex; flex-direction: column; margin-top: 8px; }
+.doc-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.doc-kind { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--soft); color: var(--soft-text); font-size: 11px; font-weight: 800; }
+.doc-main { flex: 1 1 200px; min-width: 0; }
+.doc-name { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.seg { display: inline-flex; gap: 6px; }
+.cal-title { text-transform: capitalize; margin-bottom: 14px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.cal-dow { padding: 4px 6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.cal-cell { min-height: 92px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow: hidden; }
+.cal-cell.blank { border: 0; }
+.cal-cell.in-trip { background: color-mix(in srgb, var(--accent) 7%, var(--card)); }
+.cal-num { font-size: 12px; font-weight: 700; color: var(--muted); }
+.cal-chip { display: block; padding: 2px 6px; border-radius: 6px; background: var(--accent-strong); color: var(--on-accent); font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-chip.pay { background: var(--soft); color: var(--soft-text); }
+.cal-more { font-size: 11px; color: var(--muted); }
+.day.out { opacity: 0.75; }
+.day-title { font-size: 15px; text-transform: capitalize; }
+.day-items { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.day-items li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 14px; }
+.day-tag { padding: 2px 10px; border-radius: 999px; background: var(--soft); color: var(--soft-text); font-size: 12px; font-weight: 700; }
+.day-items li.pay .day-tag { background: color-mix(in srgb, var(--warn) 16%, var(--card)); color: var(--warn); }
+.map-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.map-card { padding: 12px; }
+.map { height: 520px; border-radius: 12px; z-index: 0; }
+.place-list { display: flex; flex-direction: column; margin-top: 8px; }
+.place-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 12px 4px; border-bottom: 1px solid var(--border); text-align: left; }
+.place-btn:hover { background: var(--soft); }
+@media (max-width: 900px) {
+  .map-grid { grid-template-columns: minmax(0, 1fr); }
+  .map { height: 360px; }
+  .cal-cell { min-height: 56px; padding: 4px; }
+  .cal-chip { font-size: 0; padding: 0; width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .cal-cell { flex-direction: row; flex-wrap: wrap; align-content: flex-start; }
+  .cal-num { flex: 1 0 100%; }
+}
+.place-btn { background: transparent; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+.day-title .muted { text-transform: none; font-weight: 500; }
