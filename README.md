@@ -155,3 +155,14 @@ Dans la mini-carte « Voyage avec » de l'accueil, le bouton « + » permet d'aj
 - Avec `ALLOW_REGISTRATION=false`, l'inscription publique reste fermée : elle n'est possible qu'avec un lien d'invitation valide.
 - Maximum 20 participants par voyage. « Nouveau lien » ou « Désactiver » invalide l'ancien lien.
 - La migration `010_trip_sharing.sql` s'applique automatiquement au démarrage.
+
+
+## Mot de passe oublié (codes de récupération)
+
+- À la création du compte, 8 codes de récupération (`XXXXX-XXXXX`) sont affichés **une seule fois**. Chaque code ne sert qu'une fois.
+- Écran de connexion → « Mot de passe oublié ? » : e-mail + un code + nouveau mot de passe. Toutes les sessions ouvertes sont alors fermées.
+- Comptes existants : Paramètres → « Mot de passe oublié ? » → « Générer de nouveaux codes » (demande le mot de passe actuel ; les anciens codes sont invalidés).
+- Les codes sont stockés hachés ; essais limités (5 échecs par e-mail, 20 par adresse IP).
+- Secours si plus aucun code : `node scripts/hash-password.js "nouveau mot de passe"` affiche un hash ; dans la console SQL de Neon :
+  `UPDATE users SET password_hash = '<hash>' WHERE lower(email) = 'votre@email';` puis supprimer les sessions : `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE lower(email)='votre@email');`
+- Migration `011_recovery_codes.sql` appliquée automatiquement au démarrage.

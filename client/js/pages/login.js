@@ -1,14 +1,34 @@
 import { api } from '../api.js';
 import { html } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
+import { toast } from '../components/toast.js';
 
 export const title = 'Connexion';
 
 export async function mount(el, { onAuthenticated, invite = null }) {
-  let mode = invite ? 'register' : 'login'; // 'login' | 'register'
+  let mode = invite ? 'register' : 'login'; // 'login' | 'register' | 'reset'
+  let prefill = '';
 
   const render = () => {
     const register = mode === 'register';
+    if (mode === 'reset') {
+      el.innerHTML = String(html`
+        <div class="auth-wrap"><div class="auth-card card">
+          <div class="brand auth-brand"><span class="brand-mark">${icon('compass', 18)}</span>Travel Planner</div>
+          <h1>Mot de passe oublié</h1>
+          <p class="muted">Entrez votre e-mail, l'un de vos codes de récupération (donnés à la création du compte) et un nouveau mot de passe.</p>
+          <form id="auth-form" class="auth-form" novalidate>
+            <div class="field"><label for="email">Adresse email</label><input class="input" id="email" name="email" type="email" autocomplete="email" required value="${prefill}"></div>
+            <div class="field"><label for="code">Code de récupération</label><input class="input" id="code" name="code" autocomplete="off" autocapitalize="characters" placeholder="XXXXX-XXXXX" required></div>
+            <div class="field"><label for="password">Nouveau mot de passe</label><input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="10" required><small class="hint">10 caractères minimum.</small></div>
+            <p class="form-error" role="alert" hidden></p>
+            <button class="btn btn-primary" type="submit">Changer le mot de passe</button>
+          </form>
+          <p class="auth-switch"><button type="button" class="link-btn" data-switch-login>Retour à la connexion</button></p>
+        </div></div>`);
+      el.querySelector('input')?.focus();
+      return;
+    }
     el.innerHTML = String(html`
       <div class="auth-wrap">
         <div class="auth-card card">
@@ -24,6 +44,7 @@ export async function mount(el, { onAuthenticated, invite = null }) {
               ${register ? html`<small class="hint">10 caractères minimum.</small>` : ''}
             </div>
             <label class="check"><input type="checkbox" name="remember" checked> Se souvenir de moi</label>
+            ${register ? '' : html`<p class="forgot"><button type="button" class="link-btn" data-switch-reset>Mot de passe oublié ?</button></p>`}
             <p class="form-error" role="alert" hidden></p>
             <button class="btn btn-primary" type="submit">${register ? 'Créer mon compte' : 'Se connecter'}</button>
           </form>
@@ -35,6 +56,8 @@ export async function mount(el, { onAuthenticated, invite = null }) {
   };
 
   const onClick = (e) => {
+    if (e.target.closest('[data-switch-reset]')) { prefill = el.querySelector('#email')?.value ?? ''; mode = 'reset'; render(); return; }
+    if (e.target.closest('[data-switch-login]')) { mode = 'login'; render(); return; }
     if (e.target.closest('[data-switch]')) {
       mode = mode === 'login' ? 'register' : 'login';
       render();
@@ -46,8 +69,19 @@ export async function mount(el, { onAuthenticated, invite = null }) {
     const errorEl = form.querySelector('.form-error');
     const button = form.querySelector('[type="submit"]');
     const v = Object.fromEntries(new FormData(form));
-    const remember = form.elements.remember.checked;
     errorEl.hidden = true;
+    if (mode === 'reset') {
+      if (!v.email || !v.code || !v.password) { errorEl.textContent = 'Remplissez tous les champs.'; errorEl.hidden = false; return; }
+      button.disabled = true;
+      try {
+        await api.resetPassword(v.email, v.code, v.password);
+        toast('Mot de passe changé. Connectez-vous avec le nouveau.', 5000);
+        prefill = v.email; mode = 'login'; render();
+        el.querySelector('#email').value = v.email; el.querySelector('#password')?.focus();
+      } catch (err) { errorEl.textContent = err.message; errorEl.hidden = false; button.disabled = false; }
+      return;
+    }
+    const remember = form.elements.remember.checked;
     if (!v.email || !v.password || (mode === 'register' && !v.firstName)) {
       errorEl.textContent = 'Remplissez tous les champs.';
       errorEl.hidden = false;

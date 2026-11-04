@@ -26,6 +26,16 @@ export async function verifyPassword(password, stored) {
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
+// Codes de récupération : 8 codes de 10 caractères (sans 0/O/1/I/L pour éviter les confusions), affichés une seule fois.
+const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const RECOVERY_COUNT = 8;
+const newRecoveryCode = () => {
+  const c = Array.from({ length: 10 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join('');
+  return `${c.slice(0, 5)}-${c.slice(5)}`;
+};
+const normalizeCode = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const codeHash = (v) => sha256(`recovery:${normalizeCode(v)}`);
+
 function readCookie(req, name) {
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const i = part.indexOf('=');
@@ -57,6 +67,26 @@ function createLimiter(max = 8, windowMs = 15 * 60 * 1000) {
 
 export function createAuth(pool, { secureCookie = false } = {}) {
   const limiter = createLimiter();
+  const resetLimiter = createLimiter(5); // 5 essais par e-mail + adresse sur 15 minutes
+  const resetIpLimiter = createLimiter(20);
+
+  // Remplace tous les codes de l'utilisateur par un nouveau lot ; renvoie les codes en clair (une seule fois).
+  async function issueRecoveryCodes(userId) {
+    const codes = Array.from({ length: RECOVERY_COUNT }, newRecoveryCode);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM recovery_codes WHERE user_id = $1', [userId]);
+      for (const c of codes) await client.query('INSERT INTO recovery_codes (user_id, code_hash) VALUES ($1, $2)', [userId, codeHash(c)]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    return codes;
+  }
   const ipLimiter = createLimiter(40); // filet : trop d'échecs depuis une même adresse, quels que soient les emails essayés
 
   async function startSession(res, userId, remember) {
@@ -110,8 +140,9 @@ export function createAuth(pool, { secureCookie = false } = {}) {
         throw err;
       }
       if (invite) await joinByToken(pool, user.id, invite); // le nouveau compte rejoint le voyage tout de suite
+      const recoveryCodes = await issueRecoveryCodes(user.id);
       await startSession(res, user.id, req.body.remember === true);
-      res.status(201).json({ user: publicUser(user) });
+      res.status(201).json({ user: publicUser(user), recoveryCodes });
     } catch (err) {
       next(err);
     }
@@ -137,6 +168,65 @@ export function createAuth(pool, { secureCookie = false } = {}) {
     } catch (err) {
       next(err);
     }
+  });
+
+  // Mot de passe oublié : e-mail + un code de récupération non utilisé + nouveau mot de passe.
+  router.post('/reset-password', async (req, res, next) => {
+    try {
+      const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+      const password = typeof req.body.password === 'string' ? req.body.password : '';
+      const key = `${req.ip}|${email}`;
+      if (resetLimiter.blocked(key) || resetIpLimiter.blocked(req.ip)) return res.status(429).json({ error: 'Trop de tentatives. Réessayez dans quelques minutes.' });
+      if (password.length < 10) return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 10 caractères.' });
+      if (password.length > 200) return res.status(400).json({ error: 'Le mot de passe est trop long.' });
+      const { rows } = await pool.query(
+        `SELECT u.id, rc.id AS code_id FROM users u JOIN recovery_codes rc ON rc.user_id = u.id
+         WHERE lower(u.email) = $1 AND rc.code_hash = $2 AND rc.used_at IS NULL`,
+        [email, codeHash(req.body.code)]
+      );
+      if (!rows[0]) {
+        resetLimiter.fail(key);
+        resetIpLimiter.fail(req.ip);
+        return res.status(400).json({ error: 'E-mail ou code de récupération incorrect.' });
+      }
+      const hash = await hashPassword(password);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const used = await client.query('UPDATE recovery_codes SET used_at = now() WHERE id = $1 AND used_at IS NULL', [rows[0].code_id]);
+        if (used.rowCount !== 1) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'E-mail ou code de récupération incorrect.' }); }
+        await client.query('UPDATE users SET password_hash = $2 WHERE id = $1', [rows[0].id, hash]);
+        await client.query('DELETE FROM sessions WHERE user_id = $1', [rows[0].id]); // déconnecte tous les appareils
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+      resetLimiter.clear(key);
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Codes de récupération du compte connecté : nombre restant, et nouveau lot (mot de passe demandé).
+  router.get('/recovery-codes', requireUser, async (req, res, next) => {
+    try {
+      const { rows } = await pool.query('SELECT count(*)::int AS n FROM recovery_codes WHERE user_id = $1 AND used_at IS NULL', [req.user.id]);
+      res.json({ remaining: rows[0].n });
+    } catch (err) { next(err); }
+  });
+  router.post('/recovery-codes', requireUser, async (req, res, next) => {
+    try {
+      const key = `${req.ip}|${req.user.email.toLowerCase()}`;
+      if (limiter.blocked(key)) return res.status(429).json({ error: 'Trop de tentatives. Réessayez dans quelques minutes.' });
+      const ok = await verifyPassword(typeof req.body.password === 'string' ? req.body.password : '', req.user.password_hash);
+      if (!ok) { limiter.fail(key); return res.status(401).json({ error: 'Mot de passe incorrect.' }); }
+      limiter.clear(key);
+      res.json({ codes: await issueRecoveryCodes(req.user.id) });
+    } catch (err) { next(err); }
   });
 
   router.post('/logout', async (req, res, next) => {

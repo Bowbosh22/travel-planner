@@ -709,3 +709,44 @@ test('export PDF : récapitulatif réservé aux membres, fichier PDF valide', { 
   assert.equal((await stranger.file(`/api/trips/${t.id}/export.pdf`)).status, 404);
   assert.equal((await client().file(`/api/trips/${t.id}/export.pdf`)).status, 401);
 });
+
+test('mot de passe oublié : code de récupération à usage unique, sessions fermées, nouveau lot sur demande', { skip }, async () => {
+  const c = client();
+  const reg = await signup(c, 'rec@test.fr', { firstName: 'Rémi' });
+  assert.equal(reg.status, 201);
+  const codes = reg.body.recoveryCodes;
+  assert.equal(codes.length, 8);
+  assert.match(codes[0], /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
+  assert.equal((await c.get('/api/auth/recovery-codes')).body.remaining, 8);
+
+  const other = client();
+  assert.equal((await other.post('/api/auth/reset-password', { email: 'rec@test.fr', code: 'AAAAA-BBBBB', password: 'nouveau-mot-de-passe' })).status, 400);
+  assert.equal((await other.post('/api/auth/reset-password', { email: 'rec@test.fr', code: codes[0], password: 'court' })).status, 400);
+  assert.equal((await other.post('/api/auth/reset-password', { email: 'inconnu@test.fr', code: codes[0], password: 'nouveau-mot-de-passe' })).status, 400);
+  // le code fonctionne en minuscules et sans tiret
+  const done = await other.post('/api/auth/reset-password', { email: 'REC@test.fr', code: codes[0].toLowerCase().replace('-', ' '), password: 'nouveau-mot-de-passe' });
+  assert.equal(done.status, 200);
+  assert.equal((await c.get('/api/auth/me')).body.user, null); // ancienne session fermée
+  assert.equal((await client().post('/api/auth/login', { email: 'rec@test.fr', password: 'motdepasse-long' })).status, 401);
+  const fresh = client();
+  assert.equal((await fresh.post('/api/auth/login', { email: 'rec@test.fr', password: 'nouveau-mot-de-passe' })).status, 200);
+  // usage unique
+  assert.equal((await other.post('/api/auth/reset-password', { email: 'rec@test.fr', code: codes[0], password: 'encore-un-autre-mdp' })).status, 400);
+  assert.equal((await fresh.get('/api/auth/recovery-codes')).body.remaining, 7);
+
+  // nouveau lot : mot de passe exigé, les anciens codes cessent de marcher
+  assert.equal((await fresh.post('/api/auth/recovery-codes', { password: 'faux-mot-de-passe' })).status, 401);
+  const lot = await fresh.post('/api/auth/recovery-codes', { password: 'nouveau-mot-de-passe' });
+  assert.equal(lot.body.codes.length, 8);
+  assert.equal((await other.post('/api/auth/reset-password', { email: 'rec@test.fr', code: codes[1], password: 'encore-un-autre-mdp' })).status, 400);
+  assert.equal((await other.post('/api/auth/reset-password', { email: 'rec@test.fr', code: lot.body.codes[0], password: 'encore-un-autre-mdp' })).status, 200);
+  assert.equal((await client().get('/api/auth/recovery-codes')).status, 401);
+});
+
+test('mot de passe oublié : essais limités', { skip }, async () => {
+  const c = client(); await signup(c, 'rec2@test.fr');
+  const x = client();
+  let last;
+  for (let i = 0; i < 6; i++) last = await x.post('/api/auth/reset-password', { email: 'rec2@test.fr', code: 'ZZZZZ-ZZZZZ', password: 'nouveau-mot-de-passe' });
+  assert.equal(last.status, 429);
+});

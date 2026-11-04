@@ -16,6 +16,7 @@ import * as placeholder from './pages/placeholder.js';
 import * as login from './pages/login.js';
 import { takeCapture } from './lib/capture.js';
 import { toast } from './components/toast.js';
+import { showRecoveryCodes } from './components/recovery-dialog.js';
 
 const view = document.getElementById('view');
 const sidebar = document.getElementById('sidebar');
@@ -58,12 +59,15 @@ async function joinPending() {
 }
 
 async function onAuthenticated(u, { joined = false } = {}) {
+  const { recoveryCodes, ...account } = u;
+  u = account;
   user = u;
   setTheme(u.theme); // le thème du compte suit l'utilisateur d'un appareil à l'autre
   if (joined) { pendingInvite = null; toast('Compte créé : vous avez rejoint le voyage !'); } // inscription via le lien
   else await joinPending();
   location.hash = '#/';
-  render();
+  await render();
+  if (recoveryCodes?.length) showRecoveryCodes(recoveryCodes); // compte tout juste créé : les codes ne s'affichent qu'une fois
 }
 
 async function render() {

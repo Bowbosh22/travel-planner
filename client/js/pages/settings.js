@@ -4,6 +4,7 @@ import { html, raw } from '../lib/html.js';
 import { formatEUR } from '../lib/format.js';
 import { bookmarkletHref } from '../lib/capture.js';
 import { toast } from '../components/toast.js';
+import { askNewRecoveryCodes } from '../components/recovery-dialog.js';
 
 export const title = 'Paramètres';
 
@@ -75,6 +76,11 @@ export async function mount(el, { user, logout }) {
               <button type="button" class="btn btn-soft" data-copy-bm>Copier le code du favori</button>
             </div>
           </section>
+          <section class="card" aria-label="Récupération du compte">
+            <h2>Mot de passe oublié ?</h2>
+            <p class="muted" style="margin:8px 0 12px">Les codes de récupération permettent de choisir un nouveau mot de passe si vous l'oubliez. <span id="rc-count">…</span></p>
+            <button type="button" class="btn btn-soft" data-rc-new>Générer de nouveaux codes</button>
+          </section>
           <section class="card" aria-label="Compte">
             <h2>Compte</h2>
             <p class="muted" style="margin:8px 0 16px">${user.firstName} · ${user.email}</p>
@@ -100,7 +106,12 @@ export async function mount(el, { user, logout }) {
     `);
   };
 
+  const loadCount = () => api.recoveryStatus().then((n) => {
+    const c = el.querySelector('#rc-count');
+    if (c) c.textContent = n > 0 ? `Il vous en reste ${n}.` : "Vous n'avez aucun code : générez-en maintenant.";
+  }).catch(() => {});
   const onClick = (e) => {
+    if (e.target.closest('[data-rc-new]')) return askNewRecoveryCodes({ onDone: loadCount });
     if (e.target.closest('[data-logout]')) return logout();
     if (e.target.closest('[data-bg-clear]')) {
       setCustomBackground(null);
@@ -146,6 +157,7 @@ export async function mount(el, { user, logout }) {
   };
   el.addEventListener('change', onFile);
   render();
+  loadCount();
   wireBookmarklet();
   el.addEventListener('click', onClick);
   el.addEventListener('click', onBmClick);

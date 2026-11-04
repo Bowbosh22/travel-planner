@@ -539,3 +539,10 @@ svg { flex: none; }
   .leaflet-control-attribution { font-size: 9px; max-width: 70%; }
   .wx-text .small-line { white-space: nowrap; font-size: 11px; }
 }
+
+/* Codes de récupération / mot de passe oublié */
+.recovery-grid { list-style: none; margin: 14px 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.recovery-grid li { padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; text-align: center; }
+.recovery-grid code { font-size: 15px; font-weight: 700; letter-spacing: .06em; user-select: all; }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.forgot { margin: 0; font-size: 13px; text-align: right; }

@@ -64,7 +64,10 @@ export const api = {
     return (await request('GET', '/auth/me')).user;
   },
   login: async (email, password, remember) => (await request('POST', '/auth/login', { email, password, remember })).user,
-  register: async (firstName, email, password, remember, invite) => (await request('POST', '/auth/register', { firstName, email, password, remember, invite })).user,
+  register: async (firstName, email, password, remember, invite) => { const r = await request('POST', '/auth/register', { firstName, email, password, remember, invite }); return { ...r.user, recoveryCodes: r.recoveryCodes }; },
+  resetPassword: async (email, code, password) => await request('POST', '/auth/reset-password', { email, code, password }),
+  recoveryStatus: async () => (await request('GET', '/auth/recovery-codes')).remaining,
+  newRecoveryCodes: async (password) => (await request('POST', '/auth/recovery-codes', { password })).codes,
   getInvite: async (token) => (await request('GET', `/invites/${encodeURIComponent(token)}`)).invite,
   joinInvite: async (token) => await request('POST', `/invites/${encodeURIComponent(token)}/join`),
   createInvite: async (id) => (await request('POST', `/trips/${id}/invite`)).trip,
