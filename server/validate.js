@@ -113,6 +113,11 @@ export function validatePayment(body = {}) {
   return { value: { amount: amount.value, date: body.date } };
 }
 
+export function validateFirstName(body = {}) {
+  const first = text(body.firstName, 'Le prénom', { max: 60 });
+  return first.error ? first : { value: first.value };
+}
+
 export function validateRegistration(body = {}) {
   const first = text(body.firstName, 'Le prénom', { max: 60 });
   if (first.error) return first;

@@ -66,6 +66,7 @@ export const api = {
   login: async (email, password, remember) => (await request('POST', '/auth/login', { email, password, remember })).user,
   register: async (firstName, email, password, remember, invite) => { const r = await request('POST', '/auth/register', { firstName, email, password, remember, invite }); return { ...r.user, recoveryCodes: r.recoveryCodes }; },
   resetPassword: async (email, code, password) => await request('POST', '/auth/reset-password', { email, code, password }),
+  updateProfile: async (firstName) => (await request('PATCH', '/auth/profile', { firstName })).user,
   changePassword: async (current, password, confirm) => await request('POST', '/auth/change-password', { current, password, confirm }),
   recoveryStatus: async () => (await request('GET', '/auth/recovery-codes')).remaining,
   newRecoveryCodes: async (password) => (await request('POST', '/auth/recovery-codes', { password })).codes,

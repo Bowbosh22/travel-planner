@@ -780,3 +780,15 @@ test('changement de mot de passe : ancien requis, confirmation, autres sessions 
   assert.equal((await client().post('/api/auth/login', { email, password: 'motdepasse-long' })).status, 401);
   assert.equal((await client().post('/api/auth/login', { email, password: 'nouveau-mdp-long' })).status, 200);
 });
+
+test('profil : changement du prénom (validation, connexion requise)', { skip }, async () => {
+  assert.equal((await client().raw('PATCH', '/api/auth/profile', { firstName: 'X' })).status, 401);
+  const c = client();
+  assert.equal((await signup(c, `prof-${Date.now()}@test.fr`)).status, 201);
+  assert.equal((await c.raw('PATCH', '/api/auth/profile', { firstName: '   ' })).status, 400);
+  assert.equal((await c.raw('PATCH', '/api/auth/profile', { firstName: 'a'.repeat(61) })).status, 400);
+  const ok = await c.raw('PATCH', '/api/auth/profile', { firstName: '  Marie  ' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.user.firstName, 'Marie');
+  assert.equal((await c.get('/api/auth/me')).body.user.firstName, 'Marie');
+});

@@ -2,7 +2,7 @@ import { joinByToken, INVITE_TOKEN } from './access.js';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import express from 'express';
-import { validateRegistration } from './validate.js';
+import { validateRegistration, validateFirstName } from './validate.js';
 
 const scrypt = promisify(crypto.scrypt);
 const COOKIE = 'tp_session';
@@ -209,6 +209,16 @@ export function createAuth(pool, { secureCookie = false } = {}) {
     } catch (err) {
       next(err);
     }
+  });
+
+  // Changement du prénom affiché.
+  router.patch('/profile', requireUser, async (req, res, next) => {
+    try {
+      const parsed = validateFirstName(req.body);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      const { rows } = await pool.query('UPDATE users SET first_name = $2 WHERE id = $1 RETURNING *', [req.user.id, parsed.value]);
+      res.json({ user: publicUser(rows[0]) });
+    } catch (err) { next(err); }
   });
 
   // Changement de mot de passe : mot de passe actuel + nouveau mot de passe (confirmé). Les AUTRES sessions sont fermées.
