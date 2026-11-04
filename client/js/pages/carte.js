@@ -114,7 +114,7 @@ export async function mount(el) {
       const L = await loadLeaflet();
       if (!alive) return cleanup;
       map = L.map(el.querySelector('#map'), { scrollWheelZoom: false }).setView([20, 0], 2);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' }).addTo(map);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' }).addTo(map);
 
       for (const b of withPlace) if (b.geoDone && b.lat !== null) addMarker(L, b, b.lat, b.lng);
       fit(L);
