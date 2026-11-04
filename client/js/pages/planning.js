@@ -7,6 +7,10 @@ import { getActiveTripId, setActiveTripId } from '../store.js';
 
 export const title = 'Planning';
 
+// Le planning ne montre que ce qui se déroule à un moment précis : billets, transports, activités, restaurants, shopping.
+// Les coûts fixes (logement, documents, autres dépenses) n'y figurent pas.
+const PLANNED = new Set(['billets', 'transport', 'activites', 'restaurants', 'shopping']);
+
 const WEEK = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label ?? '';
 const dayTitle = (iso) => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
@@ -23,7 +27,7 @@ export async function mount(el) {
     return () => {};
   }
 
-  const bookings = await api.listBookings(trip.id);
+  const bookings = (await api.listBookings(trip.id)).filter((b) => PLANNED.has(b.category));
   const plan = buildPlanning(trip, bookings);
   let view = 'calendrier';
 
@@ -66,7 +70,7 @@ export async function mount(el) {
   const draw = () => {
     el.innerHTML = String(html`
       <header class="page-head">
-        <div><h1>Planning</h1><p>${trip.name} · réservations datées et paiements, jour par jour.</p></div>
+        <div><h1>Planning</h1><p>${trip.name} · billets, transports, activités, restaurants et shopping, jour par jour.</p></div>
         <div class="page-actions">
           <label class="sr-only" for="trip-select">Voyage</label>
           <select id="trip-select" class="select">${trips.map((t) => html`<option value="${t.id}" ${t.id === trip.id ? raw('selected') : ''}>${t.name}</option>`)}</select>
@@ -83,7 +87,7 @@ export async function mount(el) {
           <p class="muted small-line">Ajoutez une date à ces réservations pour les voir dans le planning.</p>
           <ul class="day-items">${plan.undated.map((b) => html`<li><span class="day-tag">${catLabel(b.category)}</span><span><strong>${b.name}</strong></span></li>`)}</ul>
         </section>` : ''}
-        ${bookings.length === 0 ? html`<section class="card empty"><h2>Aucune réservation</h2><p>Ajoutez des réservations avec leurs dates : elles apparaissent ici.</p><a class="btn btn-primary" href="#/reservations">Ajouter une réservation</a></section>` : ''}
+        ${bookings.length === 0 ? html`<section class="card empty"><h2>Rien à planifier</h2><p>Ajoutez des billets, transports, activités, restaurants ou achats avec leurs dates : ils apparaissent ici. Le logement n'est pas affiché dans le planning.</p><a class="btn btn-primary" href="#/reservations">Ajouter une réservation</a></section>` : ''}
       </div>`);
   };
 
