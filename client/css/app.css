@@ -322,3 +322,5 @@ svg { flex: none; }
 }
 .place-btn { background: transparent; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .day-title .muted { text-transform: none; font-weight: 500; }
+.gmaps-link { display: inline-block; margin: 0 4px 10px; font-size: 12px; font-weight: 600; color: var(--accent-strong); text-decoration: underline; }
+.map-card #route-link { margin: 6px 4px 4px; }

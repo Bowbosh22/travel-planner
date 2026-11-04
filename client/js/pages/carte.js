@@ -25,6 +25,14 @@ function loadLeaflet() {
   return leafletReady;
 }
 
+// Liens Google Maps (gratuits, sans clé) : la carte intégrée de Google exige un compte de facturation, pas ces liens.
+const gmapsPlace = (q) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+const gmapsRoute = (pts) => {
+  const p = pts.slice(0, 10).map(([la, ln]) => `${la.toFixed(6)},${ln.toFixed(6)}`);
+  const mid = p.slice(1, -1);
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(p[0])}&destination=${encodeURIComponent(p.at(-1))}${mid.length ? `&waypoints=${encodeURIComponent(mid.join('|'))}` : ''}`;
+};
+
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label ?? '';
 
 export async function mount(el) {
@@ -57,13 +65,14 @@ export async function mount(el) {
       <section class="card empty"><h2>Aucun lieu renseigné</h2><p>Ajoutez un lieu (ville, adresse, nom d'hôtel) à vos réservations : elles apparaissent sur la carte.</p><a class="btn btn-primary" href="#/reservations">Voir les réservations</a></section>`
     : html`
       <div class="map-grid">
-        <div class="card map-card"><div id="map" class="map" role="application" aria-label="Carte des lieux du voyage"></div><p id="map-status" class="muted small-line" aria-live="polite"></p></div>
+        <div class="card map-card"><div id="map" class="map" role="application" aria-label="Carte des lieux du voyage"></div><p id="map-status" class="muted small-line" aria-live="polite"></p>
+          <a id="route-link" class="btn btn-soft btn-sm" target="_blank" rel="noopener noreferrer" hidden>Itinéraire sur Google Maps</a></div>
         <section class="card" aria-label="Lieux">
           <h2 class="section-title in-card">Lieux</h2>
           <ul class="place-list" id="place-list">${withPlace.map((b) => html`
             <li data-id="${b.id}"><button type="button" class="place-btn" data-focus>
               <strong>${b.name}</strong><span class="muted small-line">${b.location}</span><span class="place-state muted small-line" data-state>${b.geoDone ? (b.lat === null ? 'Lieu introuvable : précisez-le dans la réservation.' : '') : 'Localisation en cours…'}</span>
-            </button></li>`)}</ul>
+            </button><a class="gmaps-link" href="${gmapsPlace(b.location)}" target="_blank" rel="noopener noreferrer">Ouvrir dans Google Maps</a></li>`)}</ul>
           ${noPlace.length ? html`<h3 class="sim-sub">Sans lieu</h3><ul class="legend-list">${noPlace.map((b) => html`<li><span class="label">${b.name}</span></li>`)}</ul><p class="muted small-line">Ajoutez un lieu dans la réservation pour la voir sur la carte.</p>` : ''}
         </section>
       </div>`}`);
@@ -79,7 +88,7 @@ export async function mount(el) {
   const status = (msg) => { const s = el.querySelector('#map-status'); if (s) s.textContent = msg; };
   const stateOf = (id) => el.querySelector(`[data-id="${id}"] [data-state]`);
 
-  const popup = (b) => {
+  const popup = (b, lat, lng) => {
     const box = document.createElement('div');
     const name = document.createElement('strong');
     name.textContent = b.name;
@@ -88,11 +97,27 @@ export async function mount(el) {
     box.append(name, sub);
     if (b.startsOn) { const d = document.createElement('div'); d.textContent = b.endsOn && b.endsOn !== b.startsOn ? `${formatLongDate(b.startsOn)} → ${formatLongDate(b.endsOn)}` : formatLongDate(b.startsOn); box.append(d); }
     if (b.amount !== null) { const m = document.createElement('div'); m.textContent = formatCurrency(b.amount, b.currency); box.append(m); }
+    const g = document.createElement('a');
+    g.href = gmapsPlace(`${lat.toFixed(6)},${lng.toFixed(6)}`);
+    g.target = '_blank';
+    g.rel = 'noopener noreferrer';
+    g.textContent = 'Ouvrir dans Google Maps';
+    box.append(g);
     return box;
   };
 
+  const located = new Map(); // id → réservation localisée
+  const updateRoute = () => {
+    const link = el.querySelector('#route-link');
+    const pts = [...located.values()].sort((a, b) => (a.b.startsOn ?? '9999').localeCompare(b.b.startsOn ?? '9999')).map((x) => [x.lat, x.lng]);
+    if (!link || pts.length < 2) return;
+    link.href = gmapsRoute(pts);
+    link.hidden = false;
+  };
   const addMarker = (L, b, lat, lng) => {
-    const m = L.marker([lat, lng], { title: b.name, alt: b.name }).addTo(map).bindPopup(popup(b));
+    located.set(b.id, { b, lat, lng });
+    updateRoute();
+    const m = L.marker([lat, lng], { title: b.name, alt: b.name }).addTo(map).bindPopup(popup(b, lat, lng));
     markers.set(b.id, m);
     stateOf(b.id).textContent = '';
   };
