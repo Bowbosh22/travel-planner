@@ -211,6 +211,27 @@ export function createAuth(pool, { secureCookie = false } = {}) {
     }
   });
 
+  // Changement de mot de passe : mot de passe actuel + nouveau mot de passe (confirmé). Les AUTRES sessions sont fermées.
+  router.post('/change-password', requireUser, async (req, res, next) => {
+    try {
+      const { current, password, confirm } = req.body ?? {};
+      const key = `${req.ip}|${req.user.email.toLowerCase()}`;
+      if (limiter.blocked(key)) return res.status(429).json({ error: 'Trop de tentatives. Réessayez dans quelques minutes.' });
+      if (typeof current !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'Requête invalide.' });
+      if (password.length < 10) return res.status(400).json({ error: 'Le nouveau mot de passe doit contenir au moins 10 caractères.' });
+      if (password.length > 200) return res.status(400).json({ error: 'Le mot de passe est trop long.' });
+      if (confirm !== undefined && confirm !== password) return res.status(400).json({ error: 'La confirmation ne correspond pas au nouveau mot de passe.' });
+      if (!(await verifyPassword(current, req.user.password_hash))) { limiter.fail(key); return res.status(401).json({ error: 'Mot de passe actuel incorrect.' }); }
+      limiter.clear(key);
+      if (current === password) return res.status(400).json({ error: 'Le nouveau mot de passe doit être différent de l\'actuel.' });
+      const hash = await hashPassword(password);
+      const mine = sha256(readCookie(req, COOKIE) ?? '');
+      await pool.query('UPDATE users SET password_hash = $2 WHERE id = $1', [req.user.id, hash]);
+      await pool.query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [req.user.id, mine]);
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+
   // Codes de récupération du compte connecté : nombre restant, et nouveau lot (mot de passe demandé).
   router.get('/recovery-codes', requireUser, async (req, res, next) => {
     try {

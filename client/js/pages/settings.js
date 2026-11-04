@@ -76,6 +76,16 @@ export async function mount(el, { user, logout }) {
               <button type="button" class="btn btn-soft" data-copy-bm>Copier le code du favori</button>
             </div>
           </section>
+          <section class="card" aria-label="Mot de passe">
+            <h2>Changer mon mot de passe</h2>
+            <form id="pw-form" class="pw-form" novalidate>
+              <div class="field"><label for="pw-cur">Mot de passe actuel</label><input class="input" id="pw-cur" type="password" autocomplete="current-password" required></div>
+              <div class="field"><label for="pw-new">Nouveau mot de passe</label><input class="input" id="pw-new" type="password" autocomplete="new-password" minlength="10" required><span class="hint">10 caractères minimum.</span></div>
+              <div class="field"><label for="pw-conf">Confirmer le nouveau mot de passe</label><input class="input" id="pw-conf" type="password" autocomplete="new-password" required></div>
+              <p class="form-error" id="pw-err" role="alert" hidden></p>
+              <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
+            </form>
+          </section>
           <section class="card" aria-label="Récupération du compte">
             <h2>Mot de passe oublié ?</h2>
             <p class="muted" style="margin:8px 0 12px">Les codes de récupération permettent de choisir un nouveau mot de passe si vous l'oubliez. <span id="rc-count">…</span></p>
@@ -110,6 +120,26 @@ export async function mount(el, { user, logout }) {
     const c = el.querySelector('#rc-count');
     if (c) c.textContent = n > 0 ? `Il vous en reste ${n}.` : "Vous n'avez aucun code : générez-en maintenant.";
   }).catch(() => {});
+  const onSubmit = async (e) => {
+    if (e.target.id !== 'pw-form') return;
+    e.preventDefault();
+    const f = e.target;
+    const err = f.querySelector('#pw-err');
+    const show = (m) => { err.textContent = m; err.hidden = !m; };
+    const cur = f.querySelector('#pw-cur').value, nw = f.querySelector('#pw-new').value, conf = f.querySelector('#pw-conf').value;
+    show('');
+    if (!cur) return show('Entrez votre mot de passe actuel.');
+    if (nw.length < 10) return show('Le nouveau mot de passe doit contenir au moins 10 caractères.');
+    if (nw !== conf) return show('La confirmation ne correspond pas au nouveau mot de passe.');
+    const btn = f.querySelector('[type=submit]'); btn.disabled = true;
+    try {
+      await api.changePassword(cur, nw, conf);
+      f.reset();
+      toast('Mot de passe modifié.');
+    } catch (ex) { show(ex.message || 'Une erreur est survenue.'); }
+    btn.disabled = false;
+  };
+  el.addEventListener('submit', onSubmit);
   const onClick = (e) => {
     if (e.target.closest('[data-rc-new]')) return askNewRecoveryCodes({ onDone: loadCount });
     if (e.target.closest('[data-logout]')) return logout();
@@ -161,5 +191,5 @@ export async function mount(el, { user, logout }) {
   wireBookmarklet();
   el.addEventListener('click', onClick);
   el.addEventListener('click', onBmClick);
-  return () => { el.removeEventListener('change', onFile); el.removeEventListener('click', onClick); el.removeEventListener('click', onBmClick); };
+  return () => { el.removeEventListener('submit', onSubmit); el.removeEventListener('change', onFile); el.removeEventListener('click', onClick); el.removeEventListener('click', onBmClick); };
 }

@@ -763,3 +763,20 @@ test('suggestions de villes et pays : connexion requise, résultats, panne = lis
   assert.equal(down.status, 200);
   assert.deepEqual(down.body.results, []);
 });
+
+test('changement de mot de passe : ancien requis, confirmation, autres sessions fermées', { skip }, async () => {
+  const email = `chg-${Date.now()}@test.fr`;
+  const a = client(); const other = client();
+  assert.equal((await signup(a, email)).status, 201);
+  assert.equal((await other.post('/api/auth/login', { email, password: 'motdepasse-long' })).status, 200);
+  assert.equal((await client().post('/api/auth/change-password', { current: 'x', password: 'nouveau-mdp-long' })).status, 401);
+  assert.equal((await a.post('/api/auth/change-password', { current: 'mauvais-mot-de-passe', password: 'nouveau-mdp-long', confirm: 'nouveau-mdp-long' })).status, 401);
+  assert.equal((await a.post('/api/auth/change-password', { current: 'motdepasse-long', password: 'court', confirm: 'court' })).status, 400);
+  assert.equal((await a.post('/api/auth/change-password', { current: 'motdepasse-long', password: 'nouveau-mdp-long', confirm: 'autre-chose-long' })).status, 400);
+  assert.equal((await a.post('/api/auth/change-password', { current: 'motdepasse-long', password: 'motdepasse-long', confirm: 'motdepasse-long' })).status, 400);
+  assert.equal((await a.post('/api/auth/change-password', { current: 'motdepasse-long', password: 'nouveau-mdp-long', confirm: 'nouveau-mdp-long' })).status, 200);
+  assert.equal((await a.get('/api/trips')).status, 200); // la session courante reste ouverte
+  assert.equal((await other.get('/api/trips')).status, 401); // les autres sont fermées
+  assert.equal((await client().post('/api/auth/login', { email, password: 'motdepasse-long' })).status, 401);
+  assert.equal((await client().post('/api/auth/login', { email, password: 'nouveau-mdp-long' })).status, 200);
+});
