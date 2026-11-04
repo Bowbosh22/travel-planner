@@ -390,3 +390,11 @@ svg { flex: none; }
 
 /* L'infobulle des icônes passe au-dessus du contenu (les cartes en verre la recouvraient). */
 .sidebar { z-index: 40; }
+
+/* Photos de la destination : plusieurs images qui se fondent l'une dans l'autre */
+.hero-photo { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0; transition: opacity 1.6s ease; }
+.hero-photo.on { opacity: 1; }
+.hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,16,24,.5) 0%, rgba(6,16,24,.08) 28%, rgba(6,16,24,.88) 100%); }
+.hero-big.has-photo > .hero-tag, .hero-big.has-photo > .hero-count, .hero-big.has-photo > .hero-body, .hero-big.has-photo > .photo-credit { z-index: 2; }
+.hero-big.has-photo .hero-body { position: relative; }
+@media (prefers-reduced-motion: reduce) { .hero-photo { transition: none; } }

@@ -4,6 +4,7 @@ import { mountCharts } from '../components/budget-charts.js';
 import { seriesColor } from '../components/charts.js';
 import { announceBudget, budgetBanner } from '../components/budget-alert.js';
 import { openImport } from '../components/import-flow.js';
+import { toast } from '../components/toast.js';
 import { loadLeaflet } from './carte.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
@@ -15,6 +16,7 @@ export const title = 'Dashboard';
 const STATUS_LABELS = { preparation: 'Préparation', confirme: 'Confirmé', en_cours: 'En cours', termine: 'Terminé' };
 const BOOKING_STATUS = { reserve: 'Réservé', a_reserver: 'À réserver' };
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label ?? '';
+const creditText = (p) => (p.source === 'unsplash' ? `Photo : ${p.author} / Unsplash` : 'Photo : Wikipédia');
 const todayLong = () => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
 function pickTrip(trips, today) {
@@ -62,6 +64,8 @@ export async function mount(el, { user }) {
   const live = bookings.filter((b) => b.status !== 'annule');
   const upcoming = [...live].sort((a, b) => (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')).slice(0, 4);
   const placed = live.filter((b) => b.geoDone && b.lat !== null);
+  const photos = (trip.photos ?? []).filter((p) => p?.url && p?.link);
+  const startAt = photos.length ? Math.floor(Math.random() * photos.length) : 0; // une photo différente à chaque visite
   const countdown = timing.phase === 'upcoming' ? { big: timing.days, small: plural(timing.days, 'jour restant', 'jours restants') } : null;
 
   el.innerHTML = String(html`
@@ -83,7 +87,9 @@ export async function mount(el, { user }) {
     ${budgetBanner(trip.id, summary)}
 
     <div class="dash-grid">
-      <section class="hero hero-big ${trip.imageUrl ? 'has-photo' : ''}" aria-label="Voyage affiché" ${trip.imageUrl ? html`style="background-image:linear-gradient(180deg,rgba(6,16,24,.5) 0%,rgba(6,16,24,.08) 28%,rgba(6,16,24,.88) 100%),url('${trip.imageUrl}')"` : ''}>
+      <section class="hero hero-big ${photos.length ? 'has-photo' : ''}" aria-label="Voyage affiché">
+        ${photos.map((p, i) => html`<div class="hero-photo ${i === startAt ? 'on' : ''}" style="background-image:url('${p.url}')"></div>`)}
+        ${photos.length ? html`<div class="hero-shade"></div>` : ''}
         <span class="hero-tag">${icon('pin', 14)} ${trip.destination}${trip.country ? html`, ${trip.country}` : ''}</span>
         ${countdown ? html`<div class="hero-count"><strong>${countdown.big}</strong><span>${countdown.small}</span></div>` : html`<div class="hero-count"><span>${timing.text}</span></div>`}
         <div class="hero-body">
@@ -94,9 +100,9 @@ export async function mount(el, { user }) {
             <a class="btn btn-hero" href="#/voyages">Ouvrir le voyage</a>
             <span class="hero-chip">${summary.count} ${plural(summary.count, 'réservation', 'réservations')}</span>
             <span class="hero-chip">Budget ${formatEUR(summary.budget)}</span>
-            ${trip.imageUrl ? '' : html`<button type="button" class="hero-chip hero-chip-btn" data-action="find-image">Chercher une photo</button>`}
+            ${photos.length ? '' : html`<button type="button" class="hero-chip hero-chip-btn" data-action="find-image">Chercher une photo</button>`}
           </div>
-          ${trip.imageCredit ? html`<a class="photo-credit" href="${trip.imageCredit}" target="_blank" rel="noopener noreferrer">Photo : Wikipédia</a>` : ''}
+          ${photos.length ? html`<a class="photo-credit" id="photo-credit" href="${photos[startAt].link}" target="_blank" rel="noopener noreferrer">${creditText(photos[startAt])}</a>` : ''}
         </div>
       </section>
 
@@ -178,7 +184,12 @@ export async function mount(el, { user }) {
     const find = e.target.closest('[data-action="find-image"]');
     if (find) {
       find.disabled = true; find.textContent = 'Recherche…';
-      try { await api.refreshTripImage(trip.id); } catch { /* on réaffiche tel quel */ }
+      try {
+        const r = await api.refreshTripImage(trip.id);
+        if (!r.found) toast(`Aucune photo trouvée sur Wikipédia pour « ${trip.destination} ». Essayez le nom de la ville seul (ex. Lisbonne).`, 7000, 'warn');
+      } catch (err) {
+        toast(`Recherche impossible : ${err.message || 'erreur du serveur'}.`, 7000, 'warn');
+      }
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     }
   };
@@ -205,8 +216,23 @@ export async function mount(el, { user }) {
     }).catch(() => {});
   }
 
+  // Les photos défilent doucement (sauf si le système demande moins d'animations).
+  let slideshow = null;
+  const layers = [...el.querySelectorAll('.hero-photo')];
+  if (layers.length > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    let at = startAt;
+    slideshow = setInterval(() => {
+      layers[at].classList.remove('on');
+      at = (at + 1) % layers.length;
+      layers[at].classList.add('on');
+      const credit = el.querySelector('#photo-credit');
+      if (credit) { credit.href = photos[at].link; credit.textContent = creditText(photos[at]); }
+    }, 9000);
+  }
+
   return () => {
     alive = false;
+    clearInterval(slideshow);
     el.removeEventListener('click', onClick);
     unmountCharts();
     miniMap?.remove();

@@ -124,6 +124,11 @@ Barre de navigation flottante à gauche (icônes seules, nom au survol), en-têt
 
 Thème « Paysage » (par défaut) : fond de montagnes dans la brume et cartes en verre dépoli. Les thèmes Bleu, Gris et Marron restent disponibles dans Paramètres. La migration 005 s'applique toute seule au démarrage.
 
-## Photo de la destination
+## Photos de la destination
 
-À la création d'un voyage (ou au changement de destination), le serveur cherche la photo de la ville sur Wikipédia (gratuit, sans clé ; français puis anglais). Elle s'affiche dans le bloc voyage de l'accueil, avec un lien « Photo : Wikipédia ». Si rien n'est trouvé, un bouton « Chercher une photo » permet de réessayer. Seules les images de upload.wikimedia.org sont acceptées (migration 006).
+À la création d'un voyage (ou au changement de destination ou de pays), le serveur cherche jusqu'à 6 photos de la ville sur **Unsplash** (gratuit). Sur l'accueil, une photo différente s'affiche à chaque visite, puis elles se fondent l'une dans l'autre toutes les 9 secondes. Le nom du photographe est affiché avec un lien, comme l'exige Unsplash.
+
+- Clé gratuite : créer une application sur unsplash.com/developers, copier l'**Access Key** et l'ajouter dans Render > Environment sous le nom `UNSPLASH_ACCESS_KEY`. Elle ne doit jamais être dans le code ni sur GitHub.
+- Sans clé, ou si Unsplash ne répond pas, le site retombe sur une photo Wikipédia (sans clé).
+- Si aucune photo n'est trouvée, le bouton « Chercher une photo » permet de réessayer et affiche la raison de l'échec.
+- Migrations 006 et 007 (appliquées au démarrage).

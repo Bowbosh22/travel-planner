@@ -10,13 +10,13 @@ import { createFxService } from './fx/rates.js';
 import { createDocumentRoutes } from './routes/documents.js';
 import { createGeoRoutes } from './routes/geo.js';
 import { createGeocoder } from './geo/nominatim.js';
-import { createImageFinder } from './images/wikipedia.js';
+import { createPhotoFinder } from './images/photos.js';
 import { rateLimit } from './ratelimit.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // importOptions : réservé aux tests (autoriser un serveur local). Jamais piloté par une variable d'environnement.
-export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), images = createImageFinder(), limits = {} } = {}) {
+export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), images = createPhotoFinder(), limits = {} } = {}) {
   const maxRegistrations = limits.registrationsPerHour ?? 10; // réglable pour les tests uniquement
   const app = express();
   app.disable('x-powered-by');
@@ -31,7 +31,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
           scriptSrc: ["'self'"],
           styleSrc: ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
           fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-          imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', 'https://upload.wikimedia.org'], // fonds de carte OpenStreetMap + photos des villes (Wikipédia)
+          imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', 'https://upload.wikimedia.org', 'https://images.unsplash.com'], // fonds de carte OpenStreetMap + photos des villes (Unsplash, Wikipédia)
           connectSrc: ["'self'"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],

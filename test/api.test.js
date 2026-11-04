@@ -56,7 +56,7 @@ function client() {
 const trip = { name: 'Lisbonne', destination: 'Lisbonne', country: 'Portugal', startDate: '2026-12-12', endDate: '2026-12-19', travelers: 2, budgetEur: 2000 };
 const signup = (c, email = 'a@test.fr', extra = {}) => c.post('/api/auth/register', { firstName: 'Ana', email, password: 'motdepasse-long', ...extra });
 
-const fakeImages = { find: async (d) => (d === 'Nullepart' ? null : { url: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/${encodeURIComponent(d)}.jpg/1280px-${encodeURIComponent(d)}.jpg`, credit: `https://fr.wikipedia.org/wiki/${encodeURIComponent(d)}` }) };
+const fakeImages = { find: async (d) => (d === 'Nullepart' ? [] : [1, 2].map((n) => ({ url: `https://images.unsplash.com/photo-${encodeURIComponent(d)}-${n}`, author: 'Ana Photo', link: 'https://unsplash.com/@ana', source: 'unsplash' }))) };
 
 before(async () => {
   if (skip) return;
@@ -554,12 +554,14 @@ test('photo de la destination : trouvée à la création, changée avec la desti
   const c = client();
   await signup(c, 'img@test.fr');
   const t = (await c.post('/api/trips', trip)).body.trip;
-  assert.match(t.imageUrl, /^https:\/\/upload\.wikimedia\.org\//);
-  assert.match(t.imageCredit, /wikipedia\.org/);
+  assert.match(t.imageUrl, /^https:\/\/images\.unsplash\.com\//);
+  assert.equal(t.photos.length, 2);
+  assert.equal(t.photos[0].author, 'Ana Photo');
   const moved = (await c.raw('PUT', `/api/trips/${t.id}`, { ...trip, destination: 'Porto' })).body.trip;
   assert.match(moved.imageUrl, /Porto/);
   const none = (await c.post('/api/trips', { ...trip, destination: 'Nullepart' })).body.trip;
   assert.equal(none.imageUrl, null);
+  assert.deepEqual(none.photos, []);
   assert.equal((await c.post(`/api/trips/${none.id}/image`, {})).status, 200);
   const other = client();
   await signup(other, 'img2@test.fr');
