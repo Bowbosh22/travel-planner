@@ -634,3 +634,62 @@ test('personnes qui voyagent avec moi : prénoms nettoyés, nombre de voyageurs 
   await signup(other, 'people2@test.fr');
   assert.equal((await other.raw('PUT', `/api/trips/${t.id}/companions`, { names: ['Intrus'] })).status, 404);
 });
+
+test('voyage partagé : lien d\'invitation, accès commun, suppression réservée au propriétaire', { skip }, async () => {
+  const owner = client(); await signup(owner, 'share-own@test.fr', { firstName: 'Olive' });
+  const t = (await owner.post('/api/trips', trip)).body.trip;
+  assert.equal(t.role, 'owner');
+  assert.equal(t.inviteToken ?? null, null);
+  const inv = await owner.post(`/api/trips/${t.id}/invite`);
+  assert.equal(inv.status, 200);
+  const token = (inv.body.trip ?? inv.body).inviteToken;
+  assert.ok(token);
+
+  // Aperçu public minimal
+  const anon = client();
+  const pv = await anon.get(`/api/invites/${token}`);
+  assert.equal(pv.status, 200);
+  assert.equal(pv.body.invite.ownerFirstName, 'Olive');
+  assert.equal(pv.body.invite.budgetEur, undefined);
+  assert.equal((await anon.get('/api/invites/' + 'x'.repeat(32))).status, 404);
+
+  // Inscriptions fermées : seule une invitation valide ouvre la porte
+  process.env.ALLOW_REGISTRATION = 'false';
+  try {
+    const bob = client();
+    assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob' })).status, 403);
+    assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob', invite: 'y'.repeat(32) })).status, 403);
+    assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob', invite: token })).status, 201);
+    const list = (await bob.get('/api/trips')).body.trips;
+    assert.equal(list.length, 1);
+    assert.equal(list[0].role, 'member');
+    assert.equal(list[0].inviteToken ?? null, null);
+    assert.deepEqual(list[0].members.map((m) => m.firstName).sort(), ['Bob', 'Olive']);
+
+    // Le membre modifie tout, sauf supprimer le voyage
+    assert.equal((await bob.put(`/api/trips/${t.id}`, { ...trip, name: 'Lisbonne à deux' })).status, 200);
+    const b = (await bob.post(`/api/trips/${t.id}/bookings`, { category: 'logement', name: 'Hôtel', amount: 100, status: 'reserve' })).body;
+    assert.ok(b.booking ?? b.id);
+    assert.equal((await owner.get(`/api/trips/${t.id}/bookings`)).body.bookings.length, 1);
+    assert.equal((await bob.del(`/api/trips/${t.id}`)).status, 404);
+    assert.equal((await bob.post(`/api/trips/${t.id}/invite`)).status, 404);
+    assert.equal((await bob.del(`/api/trips/${t.id}/members/${list[0].members[0].id ?? ''}`)).status, 404);
+
+    // Un tiers sans lien n'a aucun accès
+    const eve = client(); const es = await signup(eve, 'share-eve@test.fr', { invite: token }); assert.equal(es.status, 201, JSON.stringify(es.body));
+    await eve.del(`/api/trips/${t.id}/membership`);
+    assert.equal((await eve.get('/api/trips')).body.trips.length, 0);
+    assert.equal((await eve.get(`/api/trips/${t.id}/bookings`)).body.bookings.length, 0);
+
+    // Le propriétaire retire Bob
+    const bobId = (await owner.get('/api/trips')).body.trips[0].members.find((m) => m.firstName === 'Bob').id;
+    assert.equal((await owner.del(`/api/trips/${t.id}/members/${bobId}`)).status, 200);
+    assert.equal((await bob.get('/api/trips')).body.trips.length, 0);
+    assert.equal((await bob.get(`/api/trips/${t.id}/bookings`)).body.bookings.length, 0);
+
+    // Révocation du lien
+    assert.equal((await owner.del(`/api/trips/${t.id}/invite`)).status, 200);
+    assert.equal((await client().get(`/api/invites/${token}`)).status, 404);
+    assert.equal((await signup(client(), 'share-zed@test.fr', { invite: token })).status, 403);
+  } finally { delete process.env.ALLOW_REGISTRATION; }
+});

@@ -4,8 +4,8 @@ import { icon } from '../lib/icons.js';
 
 export const title = 'Connexion';
 
-export async function mount(el, { onAuthenticated }) {
-  let mode = 'login'; // 'login' | 'register'
+export async function mount(el, { onAuthenticated, invite = null }) {
+  let mode = invite ? 'register' : 'login'; // 'login' | 'register'
 
   const render = () => {
     const register = mode === 'register';
@@ -14,7 +14,7 @@ export async function mount(el, { onAuthenticated }) {
         <div class="auth-card card">
           <div class="brand auth-brand"><span class="brand-mark">${icon('compass', 18)}</span>Travel Planner</div>
           <h1>${register ? 'Créer un compte' : 'Connexion'}</h1>
-          <p class="muted">${register ? 'Vos voyages et votre budget, au même endroit.' : 'Retrouvez vos voyages et votre budget.'}</p>
+          ${invite ? html`<p class="invite-banner"><strong>${invite.ownerFirstName}</strong> vous invite à rejoindre le voyage <strong>${invite.name}</strong>${invite.destination ? html` (${invite.destination})` : ''}. ${register ? 'Créez votre compte' : 'Connectez-vous'} pour y accéder.</p>` : html`<p class="muted">${register ? 'Vos voyages et votre budget, au même endroit.' : 'Retrouvez vos voyages et votre budget.'}</p>`}
           <form id="auth-form" class="auth-form" novalidate>
             ${register ? html`<div class="field"><label for="firstName">Prénom</label><input class="input" id="firstName" name="firstName" autocomplete="given-name" required maxlength="60"></div>` : ''}
             <div class="field"><label for="email">Adresse email</label><input class="input" id="email" name="email" type="email" autocomplete="email" required></div>
@@ -56,9 +56,9 @@ export async function mount(el, { onAuthenticated }) {
     button.disabled = true;
     try {
       const user = mode === 'register'
-        ? await api.register(v.firstName, v.email, v.password, remember)
+        ? await api.register(v.firstName, v.email, v.password, remember, invite?.token)
         : await api.login(v.email, v.password, remember);
-      onAuthenticated(user);
+      onAuthenticated(user, { joined: mode === 'register' && !!invite });
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.hidden = false;

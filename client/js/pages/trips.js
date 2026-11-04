@@ -4,6 +4,7 @@ import { toast } from '../components/toast.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { formatMoney, formatRange, daysBetween, plural } from '../lib/format.js';
+import { openShare } from '../components/share-dialog.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 
 export const title = 'Mes voyages';
@@ -27,14 +28,14 @@ const tripForm = (t = {}) => html`
     </div>
   </div>`;
 
-export async function mount(el) {
+export async function mount(el, { user } = {}) {
   let trips = [];
 
   const card = (t) => html`
     <article class="card trip-card" data-id="${t.id}">
       <div class="trip-top">
         <span class="badge badge-${t.status}">${STATUS[t.status]}</span>
-        <span class="muted trip-meta">${t.travelers} ${plural(t.travelers, 'voyageur', 'voyageurs')}</span>
+        <span class="muted trip-meta">${t.role === 'member' ? 'Partagé · ' : ''}${t.travelers} ${plural(t.travelers, 'voyageur', 'voyageurs')}</span>
       </div>
       <h2>${t.name}</h2>
       <p class="muted">${t.destination}${t.country ? `, ${t.country}` : ''}</p>
@@ -44,7 +45,8 @@ export async function mount(el) {
         <button type="button" class="btn btn-primary btn-sm" data-act="open">${t.id === getActiveTripId() ? 'Voyage affiché' : 'Afficher'}</button>
         <button type="button" class="btn btn-soft btn-sm" data-act="bookings">Réservations</button>
         <button type="button" class="btn btn-ghost btn-sm" data-act="edit">Modifier</button>
-        <button type="button" class="btn btn-ghost btn-sm danger-text" data-act="delete">Supprimer</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-act="share">Partager</button>
+        ${t.role === 'member' ? '' : html`<button type="button" class="btn btn-ghost btn-sm danger-text" data-act="delete">Supprimer</button>`}
       </div>
     </article>`;
 
@@ -98,6 +100,7 @@ export async function mount(el) {
       case 'edit': return openForm(trip);
       case 'open': setActiveTripId(id); location.hash = '#/'; return;
       case 'bookings': setActiveTripId(id); location.hash = '#/reservations'; return;
+      case 'share': return openShare(trip, { user, onChange: () => load() });
       case 'delete':
         return confirmDialog({
           title: `Supprimer « ${trip.name} » ?`,

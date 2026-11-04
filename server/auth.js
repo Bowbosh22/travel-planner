@@ -1,3 +1,4 @@
+import { joinByToken, INVITE_TOKEN } from './access.js';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import express from 'express';
@@ -91,7 +92,12 @@ export function createAuth(pool, { secureCookie = false } = {}) {
 
   router.post('/register', async (req, res, next) => {
     try {
-      if (process.env.ALLOW_REGISTRATION === 'false') return res.status(403).json({ error: 'Les inscriptions sont fermées.' });
+      // Inscriptions fermées : seule une invitation valide à un voyage permet de créer un compte.
+      const invite = typeof req.body.invite === 'string' && INVITE_TOKEN.test(req.body.invite) ? req.body.invite : null;
+      if (process.env.ALLOW_REGISTRATION === 'false') {
+        const valid = invite && (await pool.query('SELECT 1 FROM trips WHERE invite_token = $1', [invite])).rowCount > 0;
+        if (!valid) return res.status(403).json({ error: 'Les inscriptions sont fermées.' });
+      }
       const parsed = validateRegistration(req.body);
       if (parsed.error) return res.status(400).json({ error: parsed.error });
       const { firstName, email, password } = parsed.value;
@@ -103,6 +109,7 @@ export function createAuth(pool, { secureCookie = false } = {}) {
         if (err.code === '23505') return res.status(409).json({ error: 'Un compte existe déjà avec cet email.' });
         throw err;
       }
+      if (invite) await joinByToken(pool, user.id, invite); // le nouveau compte rejoint le voyage tout de suite
       await startSession(res, user.id, req.body.remember === true);
       res.status(201).json({ user: publicUser(user) });
     } catch (err) {

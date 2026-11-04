@@ -2,6 +2,8 @@
 // Tout le reste de l'application passe par cette interface : un autre stockage (Cloudflare R2, par exemple)
 // pourra la remplacer sans toucher aux routes ni à l'interface.
 
+import { canAccess } from '../access.js';
+
 export const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 Mo par fichier
 export const MAX_USER_BYTES = 200 * 1024 * 1024; // 200 Mo par utilisateur (la base gratuite fait 1 Go)
 
@@ -31,12 +33,12 @@ export function createDocumentStore(pool) {
       const { rows } = await pool.query('SELECT COALESCE(SUM(size_bytes),0)::float8 AS total FROM documents WHERE user_id=$1', [userId]);
       return rows[0].total;
     },
-    async list(tripId, userId) {
+    async list(tripId) {
       const { rows } = await pool.query(
         `SELECT d.id, d.name, d.mime, d.size_bytes, d.created_at, d.booking_id, b.name AS booking_name
          FROM documents d LEFT JOIN bookings b ON b.id = d.booking_id
-         WHERE d.trip_id=$1 AND d.user_id=$2 ORDER BY d.created_at DESC`,
-        [tripId, userId]
+         WHERE d.trip_id=$1 ORDER BY d.created_at DESC`,
+        [tripId]
       );
       return rows.map((r) => ({ id: r.id, name: r.name, mime: r.mime, size: r.size_bytes, createdAt: r.created_at, bookingId: r.booking_id, bookingName: r.booking_name }));
     },
@@ -50,11 +52,11 @@ export function createDocumentStore(pool) {
       return { id: r.id, name: r.name, mime: r.mime, size: r.size_bytes, createdAt: r.created_at, bookingId: r.booking_id, bookingName: null };
     },
     async get(id, userId) {
-      const { rows } = await pool.query('SELECT name, mime, data FROM documents WHERE id=$1 AND user_id=$2', [id, userId]);
+      const { rows } = await pool.query(`SELECT d.name, d.mime, d.data FROM documents d JOIN trips t ON t.id = d.trip_id WHERE d.id=$1 AND ${canAccess('t', '$2')}`, [id, userId]);
       return rows[0] ?? null;
     },
     async remove(id, userId) {
-      const { rowCount } = await pool.query('DELETE FROM documents WHERE id=$1 AND user_id=$2', [id, userId]);
+      const { rowCount } = await pool.query(`DELETE FROM documents d USING trips t WHERE d.id=$1 AND t.id = d.trip_id AND ${canAccess('t', '$2')}`, [id, userId]);
       return rowCount > 0;
     },
   };

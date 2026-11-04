@@ -144,3 +144,14 @@ Deux vues sur la même carte : **Trajet aérien** (arc de grand cercle entre la 
 ## Personnes qui voyagent avec vous
 
 Dans la mini-carte « Voyage avec » de l'accueil, le bouton « + » permet d'ajouter une personne par son prénom (Entrée pour valider, Échap pour annuler) ; le × retire un prénom, et « +N » déplie la liste. 20 prénoms au maximum, sans doublon. Le nombre de voyageurs du voyage s'ajuste automatiquement (il ne descend jamais sous 1 + le nombre de prénoms). Migration 009.
+
+
+## Voyages partagés (lien d'invitation)
+
+- Le propriétaire clique sur **Partager** (carte du voyage ou widget « Voyage avec ») et crée un lien d'invitation.
+- Toute personne qui ouvre le lien et **crée un compte** (ou se connecte) rejoint le voyage : réservations, paiements, documents, dates, budget… tout est commun.
+- Seul le propriétaire peut **supprimer** le voyage, gérer/désactiver le lien et retirer des participants. Un participant peut **quitter** le voyage.
+- Les prénoms des participants apparaissent automatiquement dans « Voyage avec ».
+- Avec `ALLOW_REGISTRATION=false`, l'inscription publique reste fermée : elle n'est possible qu'avec un lien d'invitation valide.
+- Maximum 20 participants par voyage. « Nouveau lien » ou « Désactiver » invalide l'ancien lien.
+- La migration `010_trip_sharing.sql` s'applique automatiquement au démarrage.

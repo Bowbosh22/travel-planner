@@ -1,3 +1,4 @@
+import { openShare } from '../components/share-dialog.js';
 import { api } from '../api.js';
 import { summarize, tripTiming, CATEGORIES } from '../services/budget.js';
 import { mountCharts } from '../components/budget-charts.js';
@@ -83,17 +84,20 @@ export async function mount(el, { user }) {
   let travelers = n;
   let adding = false;
   let expanded = false; // « +N » déplie tous les prénoms (pour pouvoir en retirer)
+  let members = (trip.members ?? []).filter((m) => m.id !== user.id).map((m) => m.firstName); // comptes qui partagent le voyage
   const peopleMarkup = () => {
-    const others = Math.max(travelers - 1 - names.length, 0); // personnes sans prénom renseigné
+    const others = Math.max(travelers - 1 - names.length - members.length, 0); // personnes sans prénom renseigné
     const shown = expanded || names.length <= 2 ? names : names.slice(0, 1); // une seule ligne : 2 prénoms, ou 1 prénom + « +N »
     const extra = names.length - shown.length + others;
     return String(html`
-      <span class="muted small-line">${names.length || others ? 'Voyage avec' : 'Voyage en solo'}</span>
+      <span class="muted small-line">${names.length || others || members.length ? 'Voyage avec' : 'Voyage en solo'}</span>
       ${adding ? html`<form id="people-form" class="people-form"><label class="sr-only" for="people-input">Prénom</label><input id="people-input" class="input" maxlength="40" placeholder="Prénom" autocomplete="off" required><button class="btn btn-primary btn-sm" type="submit">OK</button></form>`
         : html`<div class="people-row">
+            ${members.map((nm) => html`<span class="chip-person chip-account" title="${nm} partage ce voyage"><span class="cp-name">${nm}</span></span>`)}
             ${shown.map((nm, i) => html`<span class="chip-person" title="${nm}"><span class="cp-name">${nm}</span><button type="button" class="cp-x" data-people-remove="${i}" aria-label="Retirer ${nm}">×</button></span>`)}
             ${names.length > 2 ? html`<button type="button" class="chip-person chip-more" data-people-more title="${names.join(', ')}">${expanded ? 'Réduire' : `+${extra}`}</button>`
               : others > 0 ? html`<span class="chip-person chip-more" title="Personnes sans prénom">+${others}</span>` : ''}
+            <button type="button" class="chip-add chip-share" data-people-share aria-label="Partager le voyage" title="Partager le voyage par lien">${icon('share', 13)}</button>
             <button type="button" class="chip-add" data-people-add aria-label="Ajouter une personne" title="Ajouter une personne">+</button>
           </div>`}`);
   };
@@ -244,6 +248,9 @@ export async function mount(el, { user }) {
   el.addEventListener('keydown', onKey);
   let redraw = () => {};
   const onClick = async (e) => {
+    if (e.target.closest('[data-people-share]')) {
+      return openShare(trip, { user, onChange: (t) => { if (t) { trip.members = t.members; trip.inviteToken = t.inviteToken; members = t.members.filter((m) => m.id !== user.id).map((m) => m.firstName); refreshPeople(); } else { location.reload(); } } });
+    }
     const addBtn = e.target.closest('[data-people-add]');
     if (addBtn) { adding = true; refreshPeople(); el.querySelector('#people-input')?.focus(); return; }
     if (e.target.closest('[data-people-more]')) { expanded = !expanded; refreshPeople(); return; }

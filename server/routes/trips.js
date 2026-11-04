@@ -1,6 +1,7 @@
 import express from 'express';
 import { UUID, validateBooking, validatePayment, validateTrip, validateCompanions } from '../validate.js';
 import { FxError, round2, toEur } from '../fx/rates.js';
+import { canAccess, newInviteToken } from '../access.js';
 
 const eur = (n) => `${n.toFixed(2).replace('.', ',')} €`;
 const num = (n, code) => `${n.toFixed(2).replace('.', ',')} ${code}`;
@@ -10,12 +11,15 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 export const geoKey = (r) => `${r.origin ?? ''}|${r.destination}|${r.country ?? ''}`;
 
 // Statut affiché : « en cours » et « terminé » se déduisent des dates ; le reste est choisi par l'utilisateur.
-function tripOut(r, today = todayIso()) {
+function tripOut(r, today = todayIso(), ctx = {}) {
   const status = r.end_date < today ? 'termine' : r.start_date <= today ? 'en_cours' : r.plan_status;
   return {
     id: r.id, name: r.name, destination: r.destination, country: r.country,
     startDate: r.start_date, endDate: r.end_date, travelers: r.travelers,
-    budgetEur: r.budget_eur, planStatus: r.plan_status, status, imageUrl: r.image_url, imageCredit: r.image_credit, photos: r.photos ?? [], origin: r.origin ?? '', companions: r.companions ?? [],
+    budgetEur: r.budget_eur, planStatus: r.plan_status, status,
+    role: ctx.userId && r.user_id !== ctx.userId ? 'member' : 'owner',
+    members: ctx.members ?? [],
+    inviteToken: ctx.userId && r.user_id === ctx.userId ? r.invite_token ?? null : null, imageUrl: r.image_url, imageCredit: r.image_credit, photos: r.photos ?? [], origin: r.origin ?? '', companions: r.companions ?? [],
     geo: r.geo_key === geoKey(r) ? r.geo : null, geoDone: r.geo_key === geoKey(r),
   };
 }
@@ -65,16 +69,35 @@ export function createTripRoutes(pool, fx, images) {
   // Les identifiants invalides répondent 404 (et évitent une erreur SQL).
   router.param('id', (_req, res, next, id) => (UUID.test(id) ? next() : notFound(res)));
 
+  // Présente des voyages avec le rôle de l'utilisateur et la liste des membres (prénoms seulement).
+  async function present(rows, userId) {
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.id);
+    const { rows: people } = await pool.query(
+      `SELECT t.id AS trip_id, u.id, u.first_name, true AS owner, t.created_at AS at FROM trips t JOIN users u ON u.id = t.user_id WHERE t.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT m.trip_id, u.id, u.first_name, false, m.joined_at FROM trip_members m JOIN users u ON u.id = m.user_id WHERE m.trip_id = ANY($1::uuid[])
+       ORDER BY owner DESC, at`,
+      [ids]
+    );
+    const today = todayIso();
+    return rows.map((r) => tripOut(r, today, {
+      userId,
+      members: people.filter((p) => p.trip_id === r.id).map((p) => ({ id: p.id, firstName: p.first_name, owner: p.owner })),
+    }));
+  }
+  const presentOne = async (row, userId) => (await present([row], userId))[0];
+
   async function loadBooking(id, userId) {
-    const { rows } = await pool.query(`${BOOKING_SELECT} WHERE b.id = $1 AND t.user_id = $2 GROUP BY b.id`, [id, userId]);
+    const { rows } = await pool.query(`${BOOKING_SELECT} WHERE b.id = $1 AND ${canAccess('t', '$2')} GROUP BY b.id`, [id, userId]);
     return rows[0] ? bookingOut(rows[0]) : null;
   }
 
   // ---- Voyages ----
   router.get('/trips', async (req, res, next) => {
     try {
-      const { rows } = await pool.query('SELECT * FROM trips WHERE user_id = $1 ORDER BY start_date, created_at', [req.user.id]);
-      res.json({ trips: rows.map((r) => tripOut(r)) });
+      const { rows } = await pool.query(`SELECT * FROM trips t WHERE ${canAccess('t', '$1')} ORDER BY t.start_date, t.created_at`, [req.user.id]);
+      res.json({ trips: await present(rows, req.user.id) });
     } catch (err) { next(err); }
   });
 
@@ -88,9 +111,9 @@ export function createTripRoutes(pool, fx, images) {
 
   router.post('/trips/:id/image', async (req, res, next) => {
     try {
-      const { rows } = await pool.query('SELECT id, destination, country FROM trips WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+      const { rows } = await pool.query(`SELECT id, destination, country FROM trips t WHERE t.id=$1 AND ${canAccess('t', '$2')}`, [req.params.id, req.user.id]);
       if (!rows[0]) return notFound(res);
-      const trip = tripOut(await refreshImage(rows[0].id, rows[0].destination, rows[0].country));
+      const trip = await presentOne(await refreshImage(rows[0].id, rows[0].destination, rows[0].country), req.user.id);
       res.json({ trip, found: Boolean(trip.imageUrl) });
     } catch (err) { next(err); }
   });
@@ -105,7 +128,7 @@ export function createTripRoutes(pool, fx, images) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus, v.origin]
       );
-      res.status(201).json({ trip: tripOut(await refreshImage(rows[0].id, v.destination, v.country)) });
+      res.status(201).json({ trip: await presentOne(await refreshImage(rows[0].id, v.destination, v.country), req.user.id) });
     } catch (err) { next(err); }
   });
 
@@ -114,15 +137,15 @@ export function createTripRoutes(pool, fx, images) {
       const p = validateTrip(req.body);
       if (p.error) return bad(res, p.error);
       const v = p.value;
-      const before = (await pool.query('SELECT destination, country, image_url FROM trips WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])).rows[0];
+      const before = (await pool.query(`SELECT destination, country, image_url FROM trips t WHERE t.id=$1 AND ${canAccess('t', '$2')}`, [req.params.id, req.user.id])).rows[0];
       const { rows } = await pool.query(
         `UPDATE trips SET name=$3, destination=$4, country=$5, start_date=$6, end_date=$7, travelers=$8, budget_eur=$9, plan_status=$10, origin=$11
-         WHERE id=$1 AND user_id=$2 RETURNING *`,
+         WHERE id=$1 AND (user_id=$2 OR EXISTS (SELECT 1 FROM trip_members tm WHERE tm.trip_id=trips.id AND tm.user_id=$2)) RETURNING *`,
         [req.params.id, req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus, v.origin]
       );
       if (!rows[0]) return notFound(res);
       const row = before && (before.destination !== v.destination || before.country !== v.country || !before.image_url) ? await refreshImage(rows[0].id, v.destination, v.country) : rows[0];
-      res.json({ trip: tripOut(row) });
+      res.json({ trip: await presentOne(row, req.user.id) });
     } catch (err) { next(err); }
   });
 
@@ -132,10 +155,46 @@ export function createTripRoutes(pool, fx, images) {
       const p = validateCompanions(req.body);
       if (p.error) return bad(res, p.error);
       const { rows } = await pool.query(
-        'UPDATE trips SET companions=$3::jsonb, travelers=GREATEST(travelers, $4) WHERE id=$1 AND user_id=$2 RETURNING *',
+        'UPDATE trips SET companions=$3::jsonb, travelers=GREATEST(travelers, $4) WHERE id=$1 AND (user_id=$2 OR EXISTS (SELECT 1 FROM trip_members tm WHERE tm.trip_id=trips.id AND tm.user_id=$2)) RETURNING *',
         [req.params.id, req.user.id, JSON.stringify(p.value), 1 + p.value.length]
       );
-      rows[0] ? res.json({ trip: tripOut(rows[0]) }) : notFound(res);
+      rows[0] ? res.json({ trip: await presentOne(rows[0], req.user.id) }) : notFound(res);
+    } catch (err) { next(err); }
+  });
+
+  // ---- Partage : lien d'invitation et membres (le propriétaire gère, les membres peuvent quitter) ----
+  const ownTrip = async (id, userId) => (await pool.query('SELECT id FROM trips WHERE id=$1 AND user_id=$2', [id, userId])).rows[0];
+
+  router.post('/trips/:id/invite', async (req, res, next) => {
+    try {
+      if (!(await ownTrip(req.params.id, req.user.id))) return notFound(res);
+      const { rows } = await pool.query('UPDATE trips SET invite_token=$2 WHERE id=$1 RETURNING *', [req.params.id, newInviteToken()]);
+      res.json({ trip: await presentOne(rows[0], req.user.id) });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/trips/:id/invite', async (req, res, next) => {
+    try {
+      if (!(await ownTrip(req.params.id, req.user.id))) return notFound(res);
+      const { rows } = await pool.query('UPDATE trips SET invite_token=NULL WHERE id=$1 RETURNING *', [req.params.id]);
+      res.json({ trip: await presentOne(rows[0], req.user.id) });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/trips/:id/members/:userId', async (req, res, next) => {
+    try {
+      if (!UUID.test(req.params.userId) || !(await ownTrip(req.params.id, req.user.id))) return notFound(res);
+      await pool.query('DELETE FROM trip_members WHERE trip_id=$1 AND user_id=$2', [req.params.id, req.params.userId]);
+      const { rows } = await pool.query('SELECT * FROM trips WHERE id=$1', [req.params.id]);
+      res.json({ trip: await presentOne(rows[0], req.user.id) });
+    } catch (err) { next(err); }
+  });
+
+  // Un invité quitte le voyage (le propriétaire, lui, supprime le voyage).
+  router.delete('/trips/:id/membership', async (req, res, next) => {
+    try {
+      const { rowCount } = await pool.query('DELETE FROM trip_members WHERE trip_id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+      rowCount ? res.json({ ok: true }) : notFound(res);
     } catch (err) { next(err); }
   });
 
@@ -176,7 +235,7 @@ export function createTripRoutes(pool, fx, images) {
   router.get('/trips/:id/bookings', async (req, res, next) => {
     try {
       const { rows } = await pool.query(
-        `${BOOKING_SELECT} WHERE b.trip_id = $1 AND t.user_id = $2 GROUP BY b.id ORDER BY b.created_at`,
+        `${BOOKING_SELECT} WHERE b.trip_id = $1 AND ${canAccess('t', '$2')} GROUP BY b.id ORDER BY b.created_at`,
         [req.params.id, req.user.id]
       );
       res.json({ bookings: rows.map(bookingOut) });
@@ -187,7 +246,7 @@ export function createTripRoutes(pool, fx, images) {
     try {
       const p = validateBooking(req.body);
       if (p.error) return bad(res, p.error);
-      const owned = await pool.query('SELECT 1 FROM trips WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+      const owned = await pool.query(`SELECT 1 FROM trips t WHERE t.id=$1 AND ${canAccess('t', '$2')}`, [req.params.id, req.user.id]);
       if (!owned.rowCount) return notFound(res);
       const v = p.value;
       const r = await resolveRate(v);
@@ -248,7 +307,7 @@ export function createTripRoutes(pool, fx, images) {
   router.delete('/bookings/:id', async (req, res, next) => {
     try {
       const { rowCount } = await pool.query(
-        'DELETE FROM bookings b USING trips t WHERE b.id=$1 AND t.id=b.trip_id AND t.user_id=$2',
+        `DELETE FROM bookings b USING trips t WHERE b.id=$1 AND t.id=b.trip_id AND ${canAccess('t', '$2')}`,
         [req.params.id, req.user.id]
       );
       rowCount ? res.json({ ok: true }) : notFound(res);
@@ -280,7 +339,7 @@ export function createTripRoutes(pool, fx, images) {
       const out = await withTx(async (client) => {
         const { rows } = await client.query(
           `DELETE FROM payments p USING bookings b, trips t
-           WHERE p.id=$1 AND b.id=p.booking_id AND t.id=b.trip_id AND t.user_id=$2 RETURNING p.booking_id`,
+           WHERE p.id=$1 AND b.id=p.booking_id AND t.id=b.trip_id AND ${canAccess('t', '$2')} RETURNING p.booking_id`,
           [req.params.id, req.user.id]
         );
         if (rows[0]) await recomputePaymentsEur(client, rows[0].booking_id);

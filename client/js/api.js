@@ -64,7 +64,13 @@ export const api = {
     return (await request('GET', '/auth/me')).user;
   },
   login: async (email, password, remember) => (await request('POST', '/auth/login', { email, password, remember })).user,
-  register: async (firstName, email, password, remember) => (await request('POST', '/auth/register', { firstName, email, password, remember })).user,
+  register: async (firstName, email, password, remember, invite) => (await request('POST', '/auth/register', { firstName, email, password, remember, invite })).user,
+  getInvite: async (token) => (await request('GET', `/invites/${encodeURIComponent(token)}`)).invite,
+  joinInvite: async (token) => await request('POST', `/invites/${encodeURIComponent(token)}/join`),
+  createInvite: async (id) => (await request('POST', `/trips/${id}/invite`)).trip,
+  revokeInvite: async (id) => (await request('DELETE', `/trips/${id}/invite`)).trip ?? null,
+  removeMember: async (id, userId) => await request('DELETE', `/trips/${id}/members/${userId}`),
+  leaveTrip: async (id) => await request('DELETE', `/trips/${id}/membership`),
   logout: () => request('POST', '/auth/logout'),
   saveTheme: (theme) => request('PATCH', '/auth/theme', theme),
 

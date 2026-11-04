@@ -2,6 +2,7 @@ import express from 'express';
 import { UUID } from '../validate.js';
 import { rateLimit } from '../ratelimit.js';
 import { geoKey } from './trips.js';
+import { canAccess } from '../access.js';
 
 export function createGeoRoutes(pool, geocoder) {
   const router = express.Router();
@@ -11,7 +12,7 @@ export function createGeoRoutes(pool, geocoder) {
     try {
       if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Introuvable.' });
       const { rows } = await pool.query(
-        `SELECT b.location, b.lat, b.lng, b.geo_query FROM bookings b JOIN trips t ON t.id=b.trip_id WHERE b.id=$1 AND t.user_id=$2`,
+        `SELECT b.location, b.lat, b.lng, b.geo_query FROM bookings b JOIN trips t ON t.id=b.trip_id WHERE b.id=$1 AND ${canAccess('t', '$2')}`,
         [req.params.id, req.user.id]
       );
       const b = rows[0];
@@ -33,7 +34,7 @@ export function createGeoRoutes(pool, geocoder) {
   router.post('/trips/:id/geo', rateLimit({ max: 20, windowMs: 60 * 1000, message: 'Trop de recherches. Réessayez dans une minute.' }), async (req, res, next) => {
     try {
       if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Introuvable.' });
-      const { rows } = await pool.query('SELECT * FROM trips WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+      const { rows } = await pool.query(`SELECT * FROM trips t WHERE t.id=$1 AND ${canAccess('t', '$2')}`, [req.params.id, req.user.id]);
       const t = rows[0];
       if (!t) return res.status(404).json({ error: 'Introuvable.' });
       const key = geoKey(t);

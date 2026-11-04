@@ -470,3 +470,17 @@ svg { flex: none; }
 .chip-add:hover, .chip-add:focus-visible { background: var(--soft); }
 .people-form { display: flex; gap: 6px; }
 .people-form .input { min-width: 0; flex: 1; padding: 6px 10px; font-size: 13px; }
+
+/* ---- Partage d'un voyage ---- */
+.invite-banner { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft, rgba(80,120,200,.12)); font-size: .92rem; line-height: 1.4; }
+.chip-account { background: var(--accent-soft, rgba(80,120,200,.14)); }
+.chip-share { display: inline-flex; align-items: center; justify-content: center; }
+.share-link { display: flex; gap: 8px; margin: 10px 0 6px; }
+.share-link .input { flex: 1; min-width: 0; font-size: .85rem; }
+.share-actions { margin: 4px 0 6px; font-size: .9rem; }
+.share-title { margin: 16px 0 6px; font-size: 1rem; }
+.share-members { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.share-members li { display: flex; align-items: center; gap: 10px; }
+.share-members li .cp-name { font-weight: 600; }
+.share-members li .link-btn { margin-left: auto; }
+.share-members li .cp-name { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; }

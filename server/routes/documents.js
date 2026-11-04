@@ -1,6 +1,7 @@
 import express from 'express';
 import { UUID } from '../validate.js';
 import { rateLimit } from '../ratelimit.js';
+import { canAccess } from '../access.js';
 import { MAX_FILE_BYTES, MAX_USER_BYTES, cleanFileName, createDocumentStore, sniffMime } from '../storage/documents.js';
 
 export function createDocumentRoutes(pool, store = createDocumentStore(pool)) {
@@ -9,12 +10,12 @@ export function createDocumentRoutes(pool, store = createDocumentStore(pool)) {
   const notFound = (res) => bad(res, 404, 'Introuvable.');
   router.param('id', (_req, res, next, id) => (UUID.test(id) ? next() : notFound(res)));
 
-  const ownsTrip = async (tripId, userId) => (await pool.query('SELECT 1 FROM trips WHERE id=$1 AND user_id=$2', [tripId, userId])).rowCount > 0;
+  const ownsTrip = async (tripId, userId) => (await pool.query(`SELECT 1 FROM trips t WHERE t.id=$1 AND ${canAccess('t', '$2')}`, [tripId, userId])).rowCount > 0;
 
   router.get('/trips/:id/documents', async (req, res, next) => {
     try {
       if (!(await ownsTrip(req.params.id, req.user.id))) return notFound(res);
-      res.json({ documents: await store.list(req.params.id, req.user.id), usedBytes: await store.usage(req.user.id), maxFileBytes: MAX_FILE_BYTES, maxUserBytes: MAX_USER_BYTES });
+      res.json({ documents: await store.list(req.params.id), usedBytes: await store.usage(req.user.id), maxFileBytes: MAX_FILE_BYTES, maxUserBytes: MAX_USER_BYTES });
     } catch (err) { next(err); }
   });
 

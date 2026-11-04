@@ -13,6 +13,7 @@ import { createGeocoder } from './geo/nominatim.js';
 import { createPhotoFinder } from './images/photos.js';
 import { createWeather } from './weather/openmeteo.js';
 import { createWeatherRoutes } from './routes/weather.js';
+import { createInviteRoutes } from './routes/invites.js';
 import { rateLimit } from './ratelimit.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,6 +78,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
   api.use(auth.loadUser);
   api.use('/auth/register', rateLimit({ max: maxRegistrations, windowMs: 60 * 60 * 1000, key: (req) => req.ip, message: 'Trop d\'inscriptions depuis cette adresse. Réessayez plus tard.' }));
   api.use('/auth', auth.router);
+  api.use(createInviteRoutes(pool, auth.requireUser));
   // Filet de sécurité : au plus 300 écritures par minute et par utilisateur connecté.
   api.use(auth.requireUser, (req, res, next) => (['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? next() : writeLimit(req, res, next)));
   api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx, images), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder), createWeatherRoutes(pool, weather));
