@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import helmet from 'helmet';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +23,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), images = createPhotoFinder(), weather = createWeather(), limits = {} } = {}) {
   const maxRegistrations = limits.registrationsPerHour ?? 10; // réglable pour les tests uniquement
   const app = express();
+  app.use(compression()); // pages, scripts et données compressés : chargement bien plus rapide, surtout sur mobile
   app.disable('x-powered-by');
   if (isProd) app.set('trust proxy', 1); // Railway : HTTPS terminé en amont
 
@@ -97,6 +99,9 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
   app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), { maxAge: '1d' }));
   app.use('/vendor/chart.js', express.static(path.join(root, 'node_modules', 'chart.js', 'dist'), { maxAge: '1d' }));
   // no-cache : le navigateur revérifie à chaque visite (ETag), donc une mise à jour du site s'affiche tout de suite.
+  // Images et données : longue durée de cache (elles changent rarement) ; le code reste revalidé à chaque visite.
+  app.use('/img', express.static(path.join(root, 'client', 'img'), { maxAge: '7d' }));
+  app.use('/data', express.static(path.join(root, 'client', 'data'), { maxAge: '7d' }));
   app.use(express.static(path.join(root, 'client'), { extensions: ['html'], setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
   app.use((_req, res) => res.status(404).type('text/plain').send('Page introuvable'));
   return app;

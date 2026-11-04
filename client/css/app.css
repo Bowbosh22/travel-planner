@@ -507,11 +507,11 @@ svg { flex: none; }
 .budget-banner .bb-link:hover strong { text-decoration: underline; }
 
 /* Fonds d'écran photo (thème Paysage) : voile sombre pour garder les textes lisibles */
-:root[data-theme="paysage"][data-bg="savane"] body { background: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), url('/img/bg/savane.jpg') center / cover fixed no-repeat; }
-:root[data-theme="paysage"][data-bg="plage"] body { background: linear-gradient(rgba(8,20,20,.52), rgba(8,20,20,.7)), url('/img/bg/plage.jpg') center / cover fixed no-repeat; }
-:root[data-theme="paysage"][data-bg="foret"] body { background: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), url('/img/bg/foret.jpg') center / cover fixed no-repeat; }
-:root[data-theme="paysage"][data-bg="neige"] body { background: linear-gradient(rgba(8,20,20,.62), rgba(8,20,20,.8)), url('/img/bg/neige.jpg') center / cover fixed no-repeat; }
-:root[data-theme="paysage"][data-bg="perso"] body { background: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), var(--bg-custom) center / cover fixed no-repeat; }
+:root[data-theme="paysage"][data-bg="savane"] { --page-bg: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), url('/img/bg/savane.jpg'); }
+:root[data-theme="paysage"][data-bg="plage"] { --page-bg: linear-gradient(rgba(8,20,20,.52), rgba(8,20,20,.7)), url('/img/bg/plage.jpg'); }
+:root[data-theme="paysage"][data-bg="foret"] { --page-bg: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), url('/img/bg/foret.jpg'); }
+:root[data-theme="paysage"][data-bg="neige"] { --page-bg: linear-gradient(rgba(8,20,20,.62), rgba(8,20,20,.8)), url('/img/bg/neige.jpg'); }
+:root[data-theme="paysage"][data-bg="perso"] { --page-bg: linear-gradient(rgba(8,20,20,.42), rgba(8,20,20,.62)), var(--bg-custom); }
 .bg-options .tile { width: 116px; }
 .bg-art { background-size: cover; background-position: center; min-height: 64px; }
 
@@ -527,3 +527,15 @@ svg { flex: none; }
 .leg-names { font-size: 13px; }
 .leg-info { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
 .leg-info a { color: var(--accent-strong); font-weight: 600; text-decoration: underline; }
+
+/* Fluidité sur mobile : flou plus léger (coûteux pour le processeur graphique) et rail sans flou */
+@media (max-width: 900px), (hover: none) {
+  :root[data-theme="paysage"] .card, :root[data-theme="paysage"] .tabbar, .rail { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  :root[data-theme="paysage"] .hero-big { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+@media (max-width: 900px) {
+  .dash-right .dash-map { height: 240px; min-height: 240px; flex: none; }
+  .leaflet-control-attribution { font-size: 9px; max-width: 70%; }
+  .wx-text .small-line { white-space: nowrap; font-size: 11px; }
+}
