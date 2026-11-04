@@ -93,6 +93,8 @@ export const api = {
   listDocuments: (tripId) => request('GET', `/trips/${tripId}/documents`),
   uploadDocument: uploadFile,
   deleteDocument: (id) => request('DELETE', `/documents/${id}`),
+  getWeather: async (id) => (await request('GET', `/trips/${id}/weather`)).weather,
   refreshTripImage: (id) => request('POST', `/trips/${id}/image`),
+  geocodeTrip: async (id) => (await request('POST', `/trips/${id}/geo`)).geo,
   geocodeBooking: (id) => request('POST', `/bookings/${id}/geocode`),
 };

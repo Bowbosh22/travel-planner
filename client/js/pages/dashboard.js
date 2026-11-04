@@ -6,6 +6,7 @@ import { announceBudget, budgetBanner } from '../components/budget-alert.js';
 import { openImport } from '../components/import-flow.js';
 import { toast } from '../components/toast.js';
 import { loadLeaflet } from './carte.js';
+import { bearing, distanceKm, flightMinutes, formatDuration, greatCircle } from '../lib/geo.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { formatEUR, formatMoney, formatPercent, formatRange, formatLongDate, daysBetween, plural } from '../lib/format.js';
@@ -16,6 +17,16 @@ export const title = 'Dashboard';
 const STATUS_LABELS = { preparation: 'Préparation', confirme: 'Confirmé', en_cours: 'En cours', termine: 'Terminé' };
 const BOOKING_STATUS = { reserve: 'Réservé', a_reserver: 'À réserver' };
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label ?? '';
+const WEATHER_ICONS = {
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  partly: '<circle cx="8" cy="8" r="3"/><path d="M8 2v1M2 8h1M3.8 3.8l.7.7M12.2 3.8l-.7.7"/><path d="M8 19h9a4 4 0 100-8 5 5 0 00-9.6 1A3.5 3.5 0 008 19z"/>',
+  cloud: '<path d="M7 19h10a4 4 0 100-8 5.5 5.5 0 00-10.6 1.3A3.4 3.4 0 007 19z"/>',
+  fog: '<path d="M4 9h16M3 13h18M5 17h14"/>',
+  rain: '<path d="M7 15h10a4 4 0 100-8 5.5 5.5 0 00-10.6 1.3A3.4 3.4 0 007 15z"/><path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3"/>',
+  snow: '<path d="M7 14h10a4 4 0 100-8 5.5 5.5 0 00-10.6 1.3A3.4 3.4 0 007 14z"/><path d="M9 18h.01M13 20h.01M17 18h.01"/>',
+  storm: '<path d="M7 14h10a4 4 0 100-8 5.5 5.5 0 00-10.6 1.3A3.4 3.4 0 007 14z"/><path d="M12 14l-2 4h3l-2 4"/>',
+};
+const weatherIcon = (kind) => `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WEATHER_ICONS[kind] ?? WEATHER_ICONS.cloud}</svg>`;
 const creditText = (p) => (p.source === 'unsplash' ? `Photo : ${p.author} / Unsplash` : 'Photo : Wikipédia');
 const todayLong = () => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
@@ -62,10 +73,13 @@ export async function mount(el, { user }) {
   const heroLabel = trip.id === nextId ? 'Prochain voyage' : STATUS_LABELS[trip.status] ?? 'Voyage';
   const hasData = summary.count > 0 && summary.forecast > 0;
   const live = bookings.filter((b) => b.status !== 'annule');
-  const upcoming = [...live].sort((a, b) => (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')).slice(0, 4);
+  const upcoming = [...live].sort((a, b) => (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')).slice(0, 3);
   const placed = live.filter((b) => b.geoDone && b.lat !== null);
   const photos = (trip.photos ?? []).filter((p) => p?.url && p?.link);
   const startAt = photos.length ? Math.floor(Math.random() * photos.length) : 0; // une photo différente à chaque visite
+  let view = trip.origin ? 'route' : 'country'; // carte : trajet aérien ou pays
+  const n = Number(trip.travelers) || 1;
+  const who = n <= 1 ? 'En solo' : `Avec ${n - 1} ${plural(n - 1, 'personne', 'personnes')}`;
   const countdown = timing.phase === 'upcoming' ? { big: timing.days, small: plural(timing.days, 'jour restant', 'jours restants') } : null;
 
   el.innerHTML = String(html`
@@ -107,6 +121,15 @@ export async function mount(el, { user }) {
       </section>
 
       <div class="dash-right">
+        <div class="mini-row">
+          <section class="card mini mini-weather" aria-label="Heure et météo à la destination">
+            <div class="mini-clock"><strong id="dest-time">--:--</strong><span class="muted small-line">Heure à ${trip.destination.split(',')[0]}</span></div>
+            <div class="mini-temp" id="dest-weather"><span class="muted small-line">Météo…</span></div>
+          </section>
+          <section class="card mini mini-people" aria-label="Voyageurs">
+            <span class="muted small-line">Voyage</span><strong>${who}</strong>
+          </section>
+        </div>
         <section class="card" aria-label="Budget du voyage">
           <h3 class="card-head">Budget du voyage <span class="muted small-line">en euros</span></h3>
           <div class="budget-split">
@@ -121,16 +144,15 @@ export async function mount(el, { user }) {
           </div>
         </section>
 
-        <section class="card" aria-label="Prochaines réservations">
-          <h3 class="card-head">Prochaines réservations <a class="small-link" href="#/reservations">Voir tout</a></h3>
-          ${upcoming.length ? html`<ul class="mini-bookings">${upcoming.map((b) => html`
-            <li>
-              <div class="mb-main"><strong>${b.name}</strong>
-                <span class="muted small-line">${[b.startsOn ? formatLongDate(b.startsOn) : catLabel(b.category), b.location].filter(Boolean).join(' · ')}</span></div>
-              <div class="mb-amount">${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</div>
-              <span class="badge badge-b-${b.status}">${BOOKING_STATUS[b.status] ?? ''}</span>
-            </li>`)}</ul>`
-            : html`<p class="muted">Aucune réservation. <a class="small-link" href="#/reservations">Ajouter une réservation</a></p>`}
+        <section class="card map-mini" aria-label="Carte du voyage">
+          <div class="card-head"><h3>Carte du voyage</h3>
+            <div class="seg" role="group" aria-label="Type de carte">
+              <button type="button" data-map-view="route" aria-pressed="${view === 'route'}">Trajet aérien</button>
+              <button type="button" data-map-view="country" aria-pressed="${view === 'country'}">Pays</button>
+            </div>
+          </div>
+          <div id="dash-map" class="dash-map" role="img" aria-label="Carte du trajet et du pays de destination"></div>
+          <p class="map-caption muted small-line" id="map-caption">Chargement de la carte…</p>
         </section>
       </div>
     </div>
@@ -154,10 +176,16 @@ export async function mount(el, { user }) {
           <a class="btn btn-primary" href="#/reservations">Ajouter une réservation</a>
         </section>`}
 
-      <section class="card map-mini" aria-label="Carte du voyage">
-        <h3 class="card-head">Carte du voyage <a class="small-link" href="#/carte">Ouvrir la carte</a></h3>
-        ${placed.length ? html`<div id="dash-map" class="dash-map" role="img" aria-label="Aperçu de la carte : ${placed.length} ${plural(placed.length, 'lieu', 'lieux')}"></div>`
-          : html`<div class="dash-map empty-map"><p class="muted">${live.some((b) => b.location) ? 'Ouvrez la carte pour localiser vos lieux.' : 'Ajoutez un lieu à vos réservations pour les voir ici.'}</p><a class="btn btn-soft btn-sm" href="#/carte">Ouvrir la carte</a></div>`}
+      <section class="card" aria-label="Prochaines réservations">
+          <h3 class="card-head">Prochaines réservations <a class="small-link" href="#/reservations">Voir tout</a></h3>
+          ${upcoming.length ? html`<ul class="mini-bookings">${upcoming.map((b) => html`
+            <li>
+              <div class="mb-main"><strong>${b.name}</strong>
+                <span class="muted small-line">${[b.startsOn ? formatLongDate(b.startsOn) : catLabel(b.category), b.location].filter(Boolean).join(' · ')}</span></div>
+              <div class="mb-amount">${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</div>
+              <span class="badge badge-b-${b.status}">${BOOKING_STATUS[b.status] ?? ''}</span>
+            </li>`)}</ul>`
+            : html`<p class="muted">Aucune réservation. <a class="small-link" href="#/reservations">Ajouter une réservation</a></p>`}
       </section>
 
       ${hasData ? html`
@@ -179,7 +207,10 @@ export async function mount(el, { user }) {
     </section>
   `);
 
+  let redraw = () => {};
   const onClick = async (e) => {
+    const mv = e.target.closest('[data-map-view]');
+    if (mv) { view = mv.dataset.mapView; redraw(); return; }
     if (e.target.closest('[data-action="import"]')) return openImport();
     const find = e.target.closest('[data-action="find-image"]');
     if (find) {
@@ -201,20 +232,70 @@ export async function mount(el, { user }) {
 
   const unmountCharts = mountCharts(el, summary, trip, hasData);
 
-  // Aperçu de carte (lecture seule) : seulement les lieux déjà localisés.
+  // Carte de l'accueil (lecture seule) : trajet aérien (arc de grand cercle) ou vue du pays.
   let miniMap = null;
   let alive = true;
-  if (placed.length) {
-    loadLeaflet().then((L) => {
-      const box = el.querySelector('#dash-map');
-      if (!alive || !box) return;
-      miniMap = L.map(box, { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, attributionControl: true });
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' }).addTo(miniMap);
-      const pts = placed.map((b) => [b.lat, b.lng]);
-      pts.forEach((pt) => L.marker(pt, { interactive: false, keyboard: false }).addTo(miniMap));
-      if (pts.length === 1) miniMap.setView(pts[0], 12); else miniMap.fitBounds(L.latLngBounds(pts).pad(0.25));
-    }).catch(() => {});
-  }
+  const caption = (text) => { const c = el.querySelector('#map-caption'); if (c) c.textContent = text; };
+  (async () => {
+    let geo = trip.geo;
+    if (!geo && !trip.geoDone) {
+      try { geo = await api.geocodeTrip(trip.id); } catch { geo = null; }
+    }
+    const L = await loadLeaflet().catch(() => null);
+    const box = el.querySelector('#dash-map');
+    if (!alive || !box || !L) { if (alive) caption('Carte indisponible.'); return; }
+    miniMap = L.map(box, { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, attributionControl: true });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' }).addTo(miniMap);
+    const layer = L.layerGroup().addTo(miniMap);
+    const place = (pt, label, dir = 'top') => L.circleMarker([pt.lat, pt.lng], { radius: 6, weight: 2, color: '#fff', fillColor: '#F0A25A', fillOpacity: 1, interactive: false }).bindTooltip(label, { permanent: true, direction: dir, offset: dir === 'left' ? [-8, 0] : dir === 'right' ? [8, 0] : dir === 'top' ? [0, -6] : [0, 6], className: 'map-label' }).addTo(layer);
+    const city = (t) => String(t).split(',')[0];
+
+    redraw = () => {
+      if (!alive || !miniMap) return;
+      layer.clearLayers();
+      el.querySelectorAll('[data-map-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mapView === view)));
+      if (!geo?.dest) { miniMap.setView([20, 0], 1); caption('Destination introuvable sur la carte.'); return; }
+      if (view === 'route') {
+        if (!trip.origin) { place(geo.dest, city(trip.destination)); miniMap.setView([geo.dest.lat, geo.dest.lng], 5); caption('Ajoutez votre ville de départ dans « Mes voyages » pour voir le trajet.'); return; }
+        if (!geo.origin) { place(geo.dest, city(trip.destination)); miniMap.setView([geo.dest.lat, geo.dest.lng], 5); caption(`Ville de départ « ${trip.origin} » introuvable.`); return; }
+        const arc = greatCircle(geo.origin, geo.dest);
+        L.polyline(arc, { color: '#F0A25A', weight: 3, dashArray: '8 7', interactive: false }).addTo(layer);
+        const eastward = geo.dest.lng >= geo.origin.lng; // les étiquettes se placent côté extérieur, loin du tracé
+        place(geo.origin, city(trip.origin), eastward ? 'left' : 'right');
+        place(geo.dest, city(trip.destination), eastward ? 'right' : 'left');
+        const mid = Math.floor(arc.length / 2);
+        const rot = bearing(arc[mid - 1], arc[mid + 1]);
+        L.marker(arc[mid], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'plane-ic', iconSize: [28, 28], iconAnchor: [14, 14], html: `<svg viewBox="0 0 24 24" width="28" height="28" style="transform:rotate(${rot}deg)" aria-hidden="true"><path fill="currentColor" d="M12 2c.8 0 1.5.9 1.5 2v5.5l7.5 4.5v2l-7.5-2.2V19l2 1.5V22l-3.5-1-3.5 1v-1.5l2-1.5v-5.2L3 16v-2l7.5-4.5V4c0-1.1.7-2 1.5-2z"/></svg>` }) }).addTo(layer);
+        miniMap.fitBounds(L.latLngBounds(arc), { padding: [78, 26] });
+        const km = distanceKm(geo.origin, geo.dest);
+        caption(`${city(trip.origin)} → ${city(trip.destination)} · ≈ ${Math.round(km).toLocaleString('fr-FR')} km · ≈ ${formatDuration(flightMinutes(km))} de vol`);
+      } else {
+        place(geo.dest, city(trip.destination));
+        placed.forEach((b) => L.circleMarker([b.lat, b.lng], { radius: 4, weight: 1, color: '#fff', fillColor: '#9FD3C2', fillOpacity: 1, interactive: false }).addTo(layer));
+        if (geo.box) miniMap.fitBounds([[geo.box[0], geo.box[1]], [geo.box[2], geo.box[3]]]);
+        else miniMap.setView([geo.dest.lat, geo.dest.lng], 5);
+        caption(trip.country || city(trip.destination));
+      }
+    };
+    redraw();
+  })();
+
+  // Heure locale et météo de la destination (chargées après l'affichage ; discrètes si indisponibles).
+  let clock = null;
+  api.getWeather(trip.id).then((w) => {
+    if (!alive) return;
+    const box = el.querySelector('#dest-weather');
+    const timeEl = el.querySelector('#dest-time');
+    if (!w || !box || !timeEl) { if (box) box.innerHTML = '<span class="muted small-line">Météo indisponible</span>'; return; }
+    box.innerHTML = String(html`<span class="wx-icon">${raw(weatherIcon(w.kind))}</span><span class="wx-text"><strong>${w.tempC}°C</strong><span class="muted small-line">${w.label}</span></span>`);
+    const fmt = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: w.timezone });
+    const tick = () => { timeEl.textContent = fmt.format(new Date()); };
+    tick();
+    clock = setInterval(tick, 30000);
+  }).catch(() => {
+    const box = el.querySelector('#dest-weather');
+    if (box) box.innerHTML = '<span class="muted small-line">Météo indisponible</span>';
+  });
 
   // Les photos défilent doucement (sauf si le système demande moins d'animations).
   let slideshow = null;
@@ -233,6 +314,7 @@ export async function mount(el, { user }) {
   return () => {
     alive = false;
     clearInterval(slideshow);
+    clearInterval(clock);
     el.removeEventListener('click', onClick);
     unmountCharts();
     miniMap?.remove();

@@ -15,7 +15,10 @@ export function parseNominatim(data) {
   const lat = Number(first?.lat);
   const lng = Number(first?.lon);
   if (!first || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-  return { lat, lng };
+  // Emprise du lieu [sud, ouest, nord, est] si Nominatim la fournit (utile pour cadrer un pays).
+  const [south, north, west, east] = (Array.isArray(first.boundingbox) ? first.boundingbox : []).map(Number);
+  const box = [south, west, north, east].every(Number.isFinite) && south >= -90 && north <= 90 && west >= -180 && east <= 180 && south <= north ? [south, west, north, east] : null;
+  return box ? { lat, lng, box } : { lat, lng };
 }
 
 export function createGeocoder({ fetchJson = defaultFetchJson, minIntervalMs = 1100, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {

@@ -132,3 +132,11 @@ Thème « Paysage » (par défaut) : fond de montagnes dans la brume et cartes e
 - Sans clé, ou si Unsplash ne répond pas, le site retombe sur une photo Wikipédia (sans clé).
 - Si aucune photo n'est trouvée, le bouton « Chercher une photo » permet de réessayer et affiche la raison de l'échec.
 - Migrations 006 et 007 (appliquées au démarrage).
+
+## Heure et météo de la destination
+
+Une mini-carte de l'accueil affiche l'heure locale et la météo actuelle de la ville (Open-Meteo, gratuit, sans clé ; interrogé par le serveur, résultat gardé 20 minutes). Si le service ne répond pas, elle affiche « Météo indisponible ». La mini-carte voisine indique avec combien de personnes vous voyagez (d'après le nombre de voyageurs du voyage).
+
+## Carte du voyage (accueil)
+
+Deux vues sur la même carte : **Trajet aérien** (arc de grand cercle entre la ville de départ et la destination, avec distance et durée de vol approximatives) et **Pays** (carte du pays de destination, avec les lieux de vos réservations). La ville de départ se renseigne dans « Mes voyages » ; sans elle, seule la vue Pays est complète. Coordonnées calculées avec Nominatim/OpenStreetMap (gratuit) puis mémorisées par voyage (migration 008).

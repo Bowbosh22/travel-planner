@@ -29,7 +29,8 @@ const fakeGeocoder = {
   geocode: async (q) => {
     geo.calls += 1;
     if (geo.down) throw new Error('hors ligne');
-    return q.includes('Nulle part') ? null : { lat: 38.7223, lng: -9.1393 };
+    if (q.includes('Nulle part')) return null;
+    return q.startsWith('Paris') ? { lat: 48.8566, lng: 2.3522 } : { lat: 38.7223, lng: -9.1393, box: [36.9, -9.5, 42.2, -6.2] };
   },
 };
 
@@ -63,7 +64,7 @@ before(async () => {
   pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, images: fakeImages, limits: { registrationsPerHour: 10_000 }, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
+  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, images: fakeImages, weather: { get: async (d) => (d === 'Nullepart' ? null : { tempC: 17, label: 'Peu nuageux', kind: 'partly', timezone: 'Europe/Lisbon' }) }, limits: { registrationsPerHour: 10_000 }, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
@@ -566,4 +567,47 @@ test('photo de la destination : trouvée à la création, changée avec la desti
   const other = client();
   await signup(other, 'img2@test.fr');
   assert.equal((await other.post(`/api/trips/${t.id}/image`, {})).status, 404);
+});
+
+test('météo de la destination : réservée au propriétaire du voyage', { skip }, async () => {
+  const c = client();
+  await signup(c, 'meteo@test.fr');
+  const t = (await c.post('/api/trips', trip)).body.trip;
+  const ok = await c.get(`/api/trips/${t.id}/weather`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.weather.timezone, 'Europe/Lisbon');
+  const none = (await c.post('/api/trips', { ...trip, destination: 'Nullepart' })).body.trip;
+  assert.equal((await c.get(`/api/trips/${none.id}/weather`)).body.weather, null);
+  const other = client();
+  await signup(other, 'meteo2@test.fr');
+  assert.equal((await other.get(`/api/trips/${t.id}/weather`)).status, 404);
+  assert.equal((await c.get('/api/trips/pas-un-id/weather')).status, 404);
+});
+
+test('carte de l\'accueil : départ, destination et emprise du pays, mémorisés par voyage', { skip }, async () => {
+  const c = client();
+  await signup(c, 'geo-trip@test.fr');
+  const t = (await c.post('/api/trips', { ...trip, origin: 'Paris' })).body.trip;
+  assert.equal(t.origin, 'Paris');
+  assert.equal(t.geo, null);
+  assert.equal(t.geoDone, false);
+  const before = geo.calls;
+  const g = await c.post(`/api/trips/${t.id}/geo`);
+  assert.equal(g.status, 200);
+  assert.equal(g.body.geo.origin.lat, 48.8566);
+  assert.deepEqual(g.body.geo.box, [36.9, -9.5, 42.2, -6.2]);
+  const used = geo.calls - before;
+  await c.post(`/api/trips/${t.id}/geo`);
+  assert.equal(geo.calls - before, used, 'second appel : aucun nouveau géocodage');
+  const trips = (await c.get('/api/trips')).body.trips;
+  assert.equal(trips.find((x) => x.id === t.id).geoDone, true);
+  const moved = (await c.raw('PUT', `/api/trips/${t.id}`, { ...trip, origin: 'Paris', destination: 'Porto' })).body.trip;
+  assert.equal(moved.geo, null, 'destination changée : coordonnées à recalculer');
+  const none = (await c.post('/api/trips', { ...trip, destination: 'Nulle part', country: '' })).body.trip;
+  assert.equal((await c.post(`/api/trips/${none.id}/geo`)).body.geo.dest, null);
+  geo.down = true;
+  try { assert.equal((await c.post(`/api/trips/${moved.id}/geo`)).status, 503); } finally { geo.down = false; }
+  const other = client();
+  await signup(other, 'geo-trip2@test.fr');
+  assert.equal((await other.post(`/api/trips/${t.id}/geo`)).status, 404);
 });

@@ -13,6 +13,7 @@ const STATUS = { preparation: 'En préparation', confirme: 'Confirmé', en_cours
 const tripForm = (t = {}) => html`
   <div class="form-grid">
     <div class="field span-2"><label for="f-name">Nom du voyage</label><input class="input" id="f-name" name="name" value="${t.name ?? ''}" placeholder="Escapade à Lisbonne" maxlength="120" required></div>
+    <div class="field span-2"><label for="f-origin">Ville de départ <span class="muted">(pour le trajet en avion)</span></label><input class="input" id="f-origin" name="origin" value="${t.origin ?? ''}" placeholder="Paris" maxlength="120"></div>
     <div class="field"><label for="f-dest">Destination</label><input class="input" id="f-dest" name="destination" value="${t.destination ?? ''}" placeholder="Lisbonne" maxlength="120" required></div>
     <div class="field"><label for="f-country">Pays</label><input class="input" id="f-country" name="country" value="${t.country ?? ''}" placeholder="Portugal" maxlength="120"></div>
     <div class="field"><label for="f-start">Départ</label><input class="input" id="f-start" name="startDate" type="date" value="${t.startDate ?? ''}" required></div>

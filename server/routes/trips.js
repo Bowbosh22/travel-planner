@@ -7,13 +7,16 @@ const num = (n, code) => `${n.toFixed(2).replace('.', ',')} ${code}`;
 const cents = (n) => Math.round(n * 100);
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+export const geoKey = (r) => `${r.origin ?? ''}|${r.destination}|${r.country ?? ''}`;
+
 // Statut affiché : « en cours » et « terminé » se déduisent des dates ; le reste est choisi par l'utilisateur.
 function tripOut(r, today = todayIso()) {
   const status = r.end_date < today ? 'termine' : r.start_date <= today ? 'en_cours' : r.plan_status;
   return {
     id: r.id, name: r.name, destination: r.destination, country: r.country,
     startDate: r.start_date, endDate: r.end_date, travelers: r.travelers,
-    budgetEur: r.budget_eur, planStatus: r.plan_status, status, imageUrl: r.image_url, imageCredit: r.image_credit, photos: r.photos ?? [],
+    budgetEur: r.budget_eur, planStatus: r.plan_status, status, imageUrl: r.image_url, imageCredit: r.image_credit, photos: r.photos ?? [], origin: r.origin ?? '',
+    geo: r.geo_key === geoKey(r) ? r.geo : null, geoDone: r.geo_key === geoKey(r),
   };
 }
 
@@ -98,9 +101,9 @@ export function createTripRoutes(pool, fx, images) {
       if (p.error) return bad(res, p.error);
       const v = p.value;
       const { rows } = await pool.query(
-        `INSERT INTO trips (user_id, name, destination, country, start_date, end_date, travelers, budget_eur, plan_status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus]
+        `INSERT INTO trips (user_id, name, destination, country, start_date, end_date, travelers, budget_eur, plan_status, origin)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus, v.origin]
       );
       res.status(201).json({ trip: tripOut(await refreshImage(rows[0].id, v.destination, v.country)) });
     } catch (err) { next(err); }
@@ -113,9 +116,9 @@ export function createTripRoutes(pool, fx, images) {
       const v = p.value;
       const before = (await pool.query('SELECT destination, country, image_url FROM trips WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])).rows[0];
       const { rows } = await pool.query(
-        `UPDATE trips SET name=$3, destination=$4, country=$5, start_date=$6, end_date=$7, travelers=$8, budget_eur=$9, plan_status=$10
+        `UPDATE trips SET name=$3, destination=$4, country=$5, start_date=$6, end_date=$7, travelers=$8, budget_eur=$9, plan_status=$10, origin=$11
          WHERE id=$1 AND user_id=$2 RETURNING *`,
-        [req.params.id, req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus]
+        [req.params.id, req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus, v.origin]
       );
       if (!rows[0]) return notFound(res);
       const row = before && (before.destination !== v.destination || before.country !== v.country || !before.image_url) ? await refreshImage(rows[0].id, v.destination, v.country) : rows[0];

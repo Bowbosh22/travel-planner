@@ -45,6 +45,7 @@ export function validateTrip(body = {}) {
     name: text(body.name, 'Le nom du voyage'),
     destination: text(body.destination, 'La destination'),
     country: text(body.country, 'Le pays', { required: false }),
+    origin: text(body.origin, 'La ville de départ', { required: false }),
     budgetEur: money(body.budgetEur ?? 0, 'Le budget'),
   });
   if (r.error) return r;
