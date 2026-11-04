@@ -28,3 +28,18 @@ test('cap vers l\'ouest et vers le nord', () => {
   assert.ok(Math.abs(bearing([0, 0], [1, 0])) < 1e-6);
   assert.ok(Math.abs(bearing([0, 0], [0, -1]) - 270) < 1e-6);
 });
+
+import { travelEstimate, formatMinutes } from '../client/js/lib/geo.js';
+
+test('trajet estimé : distance allongée, voiture et marche cohérentes', () => {
+  const a = { lat: 38.7139, lng: -9.1334 };
+  const near = travelEstimate(a, { lat: 38.7110, lng: -9.1290 }); // quelques centaines de mètres
+  assert.ok(near.km > 0.3 && near.km < 0.8);
+  assert.ok(near.walkable && near.walk >= near.car);
+  const far = travelEstimate(a, { lat: 38.6970, lng: -9.4220 }); // Cascais, ~25 km
+  assert.ok(far.km > 20 && far.km < 30 && !far.walkable);
+  assert.ok(far.car > 20 && far.car < 70);
+  assert.equal(travelEstimate(a, a).car, 1);
+  assert.equal(formatMinutes(12), '12 min');
+  assert.equal(formatMinutes(65), '1 h 05');
+});

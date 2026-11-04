@@ -46,3 +46,17 @@ export function bearing(p, q) {
 }
 
 export const formatDuration = (min) => `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
+
+// Estimation d'un trajet entre deux lieux (sans service d'itinéraire) : distance à vol d'oiseau, allongée de 30 % pour
+// tenir compte des rues, puis vitesses moyennes en ville ou sur route. C'est une estimation, pas un itinéraire exact.
+export function travelEstimate(a, b) {
+  const km = distanceKm(a, b);
+  const road = km * 1.3;
+  const speed = road < 3 ? 22 : road < 15 ? 32 : road < 80 ? 55 : 80; // km/h en voiture
+  const car = Math.max(Math.round((road / speed) * 60), road < 0.2 ? 1 : 2);
+  const walk = Math.round((road / 5) * 60);
+  return { km, road, car, walk, walkable: road <= 3.5 };
+}
+
+// Durée lisible : « 12 min », « 1 h 05 ».
+export const formatMinutes = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`);

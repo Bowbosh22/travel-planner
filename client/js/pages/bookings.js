@@ -75,10 +75,15 @@ export async function mount(el) {
       </li>`;
   };
 
+  let filter = 'all'; // filtre par catégorie (affichage seulement)
   const render = () => {
     const s = summarize(trip, bookings);
+    const present = CATEGORIES.map((c) => ({ ...c, n: bookings.filter((b) => b.category === c.id).length })).filter((c) => c.n);
+    if (filter !== 'all' && !present.some((c) => c.id === filter)) filter = 'all'; // la catégorie filtrée n'existe plus
+    const shown = filter === 'all' ? bookings : bookings.filter((b) => b.category === filter);
+    const fs = filter === 'all' ? null : summarize(trip, shown);
     announceBudget(trip.id, s);
-    const groups = CATEGORIES.map((c) => ({ ...c, items: bookings.filter((b) => b.category === c.id) })).filter((g) => g.items.length);
+    const groups = CATEGORIES.map((c) => ({ ...c, items: shown.filter((b) => b.category === c.id) })).filter((g) => g.items.length);
     el.innerHTML = String(html`
       <header class="page-head">
         <div><h1>Réservations</h1><p>${bookings.length} au total pour ce voyage.</p></div>
@@ -96,6 +101,14 @@ export async function mount(el) {
         <div><div class="metric-label">Reste à payer</div><strong>${formatEUR(s.toPay)}</strong></div>
         <div><div class="metric-label">Disponible</div><strong class="${s.available < 0 ? 'danger-text' : ''}">${formatEUR(s.available)}</strong></div>
       </section>
+      ${bookings.length > 0 ? html`
+        <div class="filter-row" role="group" aria-label="Filtrer par catégorie">
+          <button type="button" class="chip-btn" data-filter="all" aria-pressed="${filter === 'all'}">Toutes <span class="chip-n">${bookings.length}</span></button>
+          ${present.map((c) => html`<button type="button" class="chip-btn" data-filter="${c.id}" aria-pressed="${filter === c.id}">${c.label} <span class="chip-n">${c.n}</span></button>`)}
+        </div>
+        ${fs ? html`<section class="card filter-total" aria-live="polite"><strong>${CATEGORIES.find((c) => c.id === filter)?.label}</strong>
+          <span>${formatEUR(fs.forecast)} prévus</span><span>${formatEUR(fs.paid)} payés</span><span>${formatEUR(fs.toPay)} restent à payer</span>
+          <span class="muted">${s.forecast > 0 ? formatPercent((fs.forecast / s.forecast) * 100) : '0 %'} des dépenses du voyage</span></section>` : ''}` : ''}
       ${bookings.length === 0 ? html`
         <section class="card empty"><h2>Aucune réservation</h2><p>Ajoutez un vol, un hôtel ou une activité. Le prix peut rester vide s'il n'est pas encore connu.</p>
           <button type="button" class="btn btn-primary" data-act="new">${icon('plus', 16)}Ajouter une réservation</button></section>` : ''}
@@ -168,6 +181,8 @@ export async function mount(el) {
   };
 
   const onClick = (e) => {
+    const f = e.target.closest('[data-filter]');
+    if (f) { filter = f.dataset.filter; render(); el.querySelector(`[data-filter="${filter}"]`)?.focus(); return; }
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset.id;
