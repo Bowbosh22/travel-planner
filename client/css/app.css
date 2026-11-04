@@ -484,3 +484,9 @@ svg { flex: none; }
 .share-members li .cp-name { font-weight: 600; }
 .share-members li .link-btn { margin-left: auto; }
 .share-members li .cp-name { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; }
+
+/* Carte agrandie (clic sur le widget) */
+#dash-map { cursor: zoom-in; }
+.dialog.dialog-wide { width: min(1100px, 94vw); max-width: none; }
+.big-map-head { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.big-map { height: min(68vh, 640px); border-radius: 14px; z-index: 0; }
