@@ -1,3 +1,4 @@
+import { api } from '../api.js';
 import { COLORS, MODES, getTheme, setTheme } from '../theme.js';
 import { html, raw } from '../lib/html.js';
 import { formatEUR } from '../lib/format.js';
@@ -10,11 +11,11 @@ const modeArt = {
   auto: 'background:linear-gradient(90deg,#F5F7FB 50%,#0B1220 50%)',
 };
 
-export async function mount(el) {
+export async function mount(el, { user, logout }) {
   const render = () => {
     const theme = getTheme();
     el.innerHTML = String(html`
-      <header class="page-head"><div><h1>Apparence</h1><p>Choisissez le mode et la couleur de l'interface. Le choix est mémorisé sur cet appareil.</p></div></header>
+      <header class="page-head"><div><h1>Apparence</h1><p>Choisissez le mode et la couleur de l'interface. Le choix est enregistré sur votre compte.</p></div></header>
       <div class="settings-grid">
         <div class="stack">
           <section class="card" aria-label="Mode">
@@ -38,6 +39,11 @@ export async function mount(el) {
                 </button>`)}
             </div>
           </section>
+          <section class="card" aria-label="Compte">
+            <h2>Compte</h2>
+            <p class="muted" style="margin:8px 0 16px">${user.firstName} · ${user.email}</p>
+            <button type="button" class="btn btn-soft" data-logout>Se déconnecter</button>
+          </section>
         </div>
         <section class="card" aria-label="Aperçu">
           <h2>Aperçu</h2>
@@ -59,10 +65,12 @@ export async function mount(el) {
   };
 
   const onClick = (e) => {
+    if (e.target.closest('[data-logout]')) return logout();
     const tile = e.target.closest('.tile');
     if (!tile) return;
-    if (tile.dataset.mode) setTheme({ mode: tile.dataset.mode });
-    if (tile.dataset.color) setTheme({ color: tile.dataset.color });
+    const patch = tile.dataset.mode ? { mode: tile.dataset.mode } : { color: tile.dataset.color };
+    setTheme(patch);
+    api.saveTheme(patch).catch(() => {}); // enregistré sur le compte ; le choix local reste appliqué en cas d'échec
     render();
     el.querySelector(`.tile[aria-pressed="true"]`)?.focus?.();
   };

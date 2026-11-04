@@ -18,15 +18,15 @@ function pickTrip(trips, today) {
   return upcoming[0] ?? trips[0] ?? null;
 }
 
-export async function mount(el) {
+export async function mount(el, { user }) {
   const today = api.today();
-  const [user, trips] = await Promise.all([api.me(), api.listTrips()]);
+  const trips = await api.listTrips();
   const trip = pickTrip(trips, today);
 
   if (!trip) {
     el.innerHTML = String(html`
       <header class="page-head"><div><h1>Bonjour, ${user.firstName}</h1><p>Aucun voyage pour le moment.</p></div></header>
-      <div class="card empty"><h2>Créez votre premier voyage</h2><p>Renseignez une destination, des dates et un budget en euros pour commencer.</p></div>`);
+      <div class="card empty"><h2>Créez votre premier voyage</h2><p>Renseignez une destination, des dates et un budget en euros pour commencer.</p><a class="btn btn-primary" href="#/voyages">Créer un voyage</a></div>`);
     return () => {};
   }
 
@@ -84,8 +84,8 @@ export async function mount(el) {
       ${hasData ? chartsMarkup(summary) : html`
         <section class="card empty">
           <h2>Aucune dépense pour ce voyage</h2>
-          <p>Importez un lien de réservation ou ajoutez vos dépenses : le budget et les graphiques se mettent à jour automatiquement.</p>
-          <button type="button" class="btn btn-primary" data-action="import">${icon('plus', 16)}Importer depuis un lien</button>
+          <p>Ajoutez vos réservations : le budget et les graphiques se mettent à jour automatiquement.</p>
+          <a class="btn btn-primary" href="#/reservations">Ajouter une réservation</a>
         </section>`}
 
       <section class="card" aria-label="À surveiller">

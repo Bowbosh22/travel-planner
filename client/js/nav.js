@@ -12,8 +12,6 @@ export const NAV = [
 
 // Sections pas encore développées : la page indique l'étape prévue.
 export const PLACEHOLDERS = {
-  '/voyages': { step: 3, text: 'Créer, modifier et organiser plusieurs voyages indépendants.' },
-  '/reservations': { step: 3, text: 'Ajouter, modifier, dupliquer et supprimer vos réservations par catégorie.' },
   '/budget': { step: 6, text: 'Suivi complet du budget : initial, prévisionnel, payé, restant, avec alertes.' },
   '/simulateur': { step: 6, text: 'Tester des scénarios sans toucher à vos vraies réservations.' },
   '/planning': { step: 7, text: 'Vue calendrier et vue quotidienne de votre séjour.' },

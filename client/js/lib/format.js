@@ -17,3 +17,6 @@ export function daysBetween(fromIso, toIso) {
 }
 
 export const plural = (n, one, many) => (n > 1 ? many : one);
+
+// Montants entiers sans décimales, sinon avec centimes (650,50 €).
+export const formatMoney = (n) => (Number.isInteger(n) ? formatEUR(n) : formatEURCents(n));
