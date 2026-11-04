@@ -8,7 +8,28 @@ export class ApiError extends Error {
   }
 }
 
+// Cache des lectures (GET) : 30 s, avec fusion des demandes identiques en cours. Toute écriture (ou connexion / déconnexion) vide le cache.
+// Les pages enchaînent « liste des voyages » puis « réservations » : sans cache, chaque changement d'onglet attend deux allers-retours réseau.
+const READ_TTL = 30_000;
+const NO_CACHE = /^\/(auth|geo\/suggest|fx)/;
+const reads = new Map();
+export const clearApiCache = () => reads.clear();
+
 async function request(method, path, body) {
+  if (method !== 'GET') {
+    reads.clear();
+    try { return await send(method, path, body); } finally { reads.clear(); } // aussi après la réponse : une lecture lancée entre-temps serait périmée
+  }
+  if (NO_CACHE.test(path)) return send(method, path, body);
+  const hit = reads.get(path);
+  if (hit && Date.now() - hit.at < READ_TTL) return structuredClone(await hit.promise);
+  const promise = send(method, path, body);
+  reads.set(path, { at: Date.now(), promise });
+  promise.catch(() => { if (reads.get(path)?.promise === promise) reads.delete(path); });
+  return structuredClone(await promise);
+}
+
+async function send(method, path, body) {
   let res;
   try {
     res = await fetch(`/api${path}`, {

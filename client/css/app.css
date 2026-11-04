@@ -650,3 +650,14 @@ html[data-text="small"] .dialog-body, html[data-text="large"] .dialog-body { max
   [data-action="customize"] { padding: 0 12px; }
   .photo-credit { position: static; display: block; margin-top: 8px; text-align: right; }
 }
+
+/* Retour visuel immédiat à chaque changement d'onglet : fine barre de progression + page précédente légèrement estompée */
+body.nav-loading::after { content: ""; position: fixed; z-index: 100; top: 0; left: 0; height: 3px; width: 100%; background: var(--accent-strong); transform-origin: left; animation: nav-bar 1.2s ease-out forwards; pointer-events: none; }
+body.nav-loading #view { opacity: 0.6; transition: opacity 0.2s ease 0.12s; }
+@keyframes nav-bar { from { transform: scaleX(0.05); } to { transform: scaleX(0.9); } }
+@media (prefers-reduced-motion: reduce) { body.nav-loading::after { animation: none; transform: scaleX(0.6); } }
+
+/* Effets légers : pas de flou de verre dépoli (coûteux), cartes un peu plus opaques, pas d'animations */
+html[data-fx="light"] *, html[data-fx="light"] *::before, html[data-fx="light"] *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; transition: none !important; animation-duration: 0.01s !important; animation-iteration-count: 1 !important; }
+:root[data-theme="paysage"][data-fx="light"] .card { background: rgba(18, 42, 40, 0.88); }
+:root[data-theme="paysage"][data-fx="light"] .rail, :root[data-theme="paysage"][data-fx="light"] .tabbar { background: rgba(14, 34, 32, 0.92); }

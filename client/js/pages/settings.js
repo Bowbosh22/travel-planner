@@ -83,6 +83,13 @@ export async function mount(el, { user, logout }) {
             </div>
             <p class="muted" style="margin-top:12px;font-size:13px">Agrandit ou réduit le texte et les éléments des pages (pratique sur téléphone).</p>
           </section>
+          <section class="card" aria-label="Effets visuels">
+            <h2>Effets visuels</h2>
+            <div class="opt-row" role="group" aria-label="Effets visuels">
+              ${[['full', 'Complets'], ['light', 'Légers (plus fluide)']].map(([v, l]) => html`<button type="button" class="opt-btn" data-pref="effects" data-val="${v}" aria-pressed="${(prefs.effects ?? 'full') === v}">${l}</button>`)}
+            </div>
+            <p class="muted" style="margin-top:12px;font-size:13px">« Légers » supprime le flou de verre dépoli et les animations : le site réagit plus vite sur un ordinateur ou un téléphone modeste.</p>
+          </section>
           <section class="card" aria-label="Devise d'affichage">
             <h2>Devise d'affichage</h2>
             <div class="opt-row" role="group" aria-label="Devise d'affichage">

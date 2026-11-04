@@ -15,6 +15,7 @@ import * as settings from './pages/settings.js';
 import * as placeholder from './pages/placeholder.js';
 import * as login from './pages/login.js';
 import { takeCapture } from './lib/capture.js';
+import { getActiveTripId } from './store.js';
 import { toast } from './components/toast.js';
 import { showRecoveryCodes } from './components/recovery-dialog.js';
 import { loadPrefs, resetPrefs, launchRoute } from './prefs.js';
@@ -75,6 +76,7 @@ async function onAuthenticated(u, { joined = false } = {}) {
 
 async function render() {
   const mine = ++token;
+  document.body.classList.add('nav-loading'); // retour visuel immédiat pendant le chargement de la page
   closeSheet(sheet);
   destroyCurrent();
   destroyCurrent = () => {};
@@ -93,6 +95,7 @@ async function render() {
     sidebar.innerHTML = '';
     tabbar.innerHTML = '';
     document.title = 'Connexion · Travel Planner';
+    document.body.classList.remove('nav-loading');
     destroyCurrent = (await login.mount(view, { onAuthenticated, invite: pendingInvite?.preview ? { ...pendingInvite.preview, token: pendingInvite.token } : null })) ?? (() => {});
     return;
   }
@@ -108,6 +111,7 @@ async function render() {
   });
 
   if (!page) {
+    document.body.classList.remove('nav-loading');
     document.title = 'Page introuvable · Travel Planner';
     view.innerHTML = '<section class="card empty"><h2>Page introuvable</h2><p>Ce lien ne mène nulle part.</p><a class="btn btn-soft" href="#/">Retour au dashboard</a></section>';
     return;
@@ -126,6 +130,7 @@ async function render() {
   if (pendingCapture) { const c = pendingCapture; pendingCapture = null; openImport({ capture: c }); }
   if (!first) { window.scrollTo({ top: 0 }); view.focus({ preventScroll: true }); }
   first = false;
+  if (mine === token) document.body.classList.remove('nav-loading');
 }
 
 // Session expirée pendant l'utilisation : retour à la connexion.
@@ -137,6 +142,9 @@ window.addEventListener('unauthorized', () => {
 
 applyTheme();
 watchSystemTheme();
+// Préchargement : au survol (ou au toucher) d'un onglet, on demande déjà les voyages et les réservations du voyage affiché.
+const prefetch = () => { if (!user) return; api.listTrips().then((t) => { const id = getActiveTripId() ?? t[0]?.id; if (id && t.some((x) => x.id === id)) return api.listBookings(id); }).catch(() => {}); };
+for (const nav of [sidebar, tabbar]) { nav.addEventListener('pointerover', (e) => { if (e.target.closest('a[href^="#/"]')) prefetch(); }); nav.addEventListener('touchstart', (e) => { if (e.target.closest('a[href^="#/"]')) prefetch(); }, { passive: true }); }
 window.addEventListener('hashchange', () => { if (user || /^#\/invitation\//.test(location.hash)) render(); });
 
 try {
@@ -144,6 +152,7 @@ try {
   if (user) {
     setTheme(user.theme);
     await loadPrefs(user.prefs);
+    setTimeout(prefetch, 0);
     // ouverture du site sans page précise : on va à la page de lancement choisie
     if (!location.hash || location.hash === '#/' || location.hash === '#') { const r = launchRoute(); if (r !== '/') history.replaceState(null, '', `${location.pathname}${location.search}#${r}`); }
   }

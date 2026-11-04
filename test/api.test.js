@@ -838,3 +838,9 @@ test('appareils connectés : liste, déconnexion d\'un appareil, des autres', { 
   assert.equal((await x.del(`/api/auth/sessions/${me.id}`)).status, 404);
   assert.equal((await a.get('/api/trips')).status, 200);
 });
+
+test('préférences : effets visuels', { skip }, async () => {
+  const c = client(); await signup(c, `fx-${Date.now()}@test.fr`);
+  assert.equal((await c.put('/api/auth/prefs', { effects: 'ultra' })).status, 400);
+  assert.equal((await c.put('/api/auth/prefs', { effects: 'light' })).body.prefs.effects, 'light');
+});

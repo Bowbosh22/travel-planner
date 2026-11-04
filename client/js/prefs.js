@@ -21,6 +21,10 @@ export function getLayout() {
   return { order, hidden: (l.hidden ?? []).filter((id) => WIDGET_IDS.includes(id)), sizes: { ...DEFAULT_LAYOUT.sizes, ...(l.sizes ?? {}) } };
 }
 
+export function applyEffects(fx = 'full') {
+  document.documentElement.dataset.fx = fx === 'light' ? 'light' : 'full';
+}
+
 const SCALE = { small: 'small', normal: 'normal', large: 'large' };
 export function applyTextSize(size = 'normal') {
   document.documentElement.dataset.text = SCALE[size] ?? 'normal';
@@ -30,6 +34,7 @@ export function applyTextSize(size = 'normal') {
 export async function loadPrefs(p = {}) {
   prefs = p && typeof p === 'object' ? { ...p } : {};
   applyTextSize(prefs.textSize);
+  applyEffects(prefs.effects);
   await applyCurrency(prefs.currency);
 }
 
@@ -48,6 +53,7 @@ export async function savePrefs(patch) {
   prefs = { ...prefs, ...patch };
   if (patch.layout === null) delete prefs.layout;
   if ('textSize' in patch) applyTextSize(patch.textSize);
+  if ('effects' in patch) applyEffects(patch.effects);
   if ('currency' in patch) await applyCurrency(patch.currency);
   try {
     const r = await api.savePrefs(patch);
@@ -61,6 +67,7 @@ export async function savePrefs(patch) {
 export function resetPrefs() {
   prefs = {};
   applyTextSize('normal');
+  applyEffects('full');
   setDisplayCurrency('EUR', 1);
 }
 

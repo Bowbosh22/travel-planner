@@ -2,6 +2,7 @@
 export const DISPLAY_CURRENCIES = ['EUR', 'USD', 'XAF', 'XOF'];
 export const HOMES = ['dashboard', 'voyages', 'carte'];
 export const TEXT_SIZES = ['small', 'normal', 'large'];
+export const EFFECTS = ['full', 'light'];
 export const WIDGETS = ['hero', 'weather', 'people', 'budget', 'map', 'categories', 'upcoming', 'paid', 'alerts'];
 export const WIDGET_SIZES = ['S', 'M', 'L', 'F'];
 
@@ -21,6 +22,10 @@ export function validatePrefs(body = {}) {
   if (body.textSize !== undefined) {
     if (!TEXT_SIZES.includes(body.textSize)) return { error: 'Taille du texte invalide.' };
     out.textSize = body.textSize;
+  }
+  if (body.effects !== undefined) {
+    if (!EFFECTS.includes(body.effects)) return { error: 'Choix des effets invalide.' };
+    out.effects = body.effects;
   }
   if (body.layout !== undefined) {
     if (body.layout === null) out.layout = null; // retour à la disposition d'origine
