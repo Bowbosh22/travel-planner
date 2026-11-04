@@ -1,0 +1,58 @@
+/* Thèmes : 3 couleurs (bleu, gris, marron) x 2 modes (clair, sombre).
+   Ajouter un thème = ajouter un bloc :root[data-theme][data-mode]. */
+
+:root {
+  --radius: 20px;
+  --radius-sm: 12px;
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: light;
+}
+:root[data-mode="dark"] { color-scheme: dark; }
+
+/* ---------- Bleu ---------- */
+:root[data-theme="bleu"][data-mode="light"] {
+  --bg:#F5F7FB; --card:#FFFFFF; --border:#E3E8F2; --hover:#EEF2FA; --text:#0F1B33; --muted:#5A6882;
+  --accent:#2456C9; --accent-strong:#2456C9; --on-accent:#FFFFFF; --soft:#E6EEFC; --soft-text:#1B3F8F;
+  --s1:#1B3F8F; --s2:#2456C9; --s3:#7FA6F5; --s4:#C9D3E8;
+  --hero-bg:#2456C9; --hero-fg:#FFFFFF; --hero-btn-bg:#FFFFFF; --hero-btn-fg:#1B3F8F;
+  --warn:#C2540F; --danger:#C62828;
+}
+:root[data-theme="bleu"][data-mode="dark"] {
+  --bg:#0B1220; --card:#121B2E; --border:#1E2A44; --hover:#16213A; --text:#E8EEFB; --muted:#93A3C2;
+  --accent:#7FA6F5; --accent-strong:#7FA6F5; --on-accent:#0B1220; --soft:#1A2A4D; --soft-text:#BBD0FA;
+  --s1:#7FA6F5; --s2:#4F7FE0; --s3:#2F57A8; --s4:#3A4766;
+  --hero-bg:#1B2B52; --hero-fg:#E8EEFB; --hero-btn-bg:#7FA6F5; --hero-btn-fg:#0B1220;
+  --warn:#F0935A; --danger:#F27C7C;
+}
+
+/* ---------- Gris ---------- */
+:root[data-theme="gris"][data-mode="light"] {
+  --bg:#F5F6F7; --card:#FFFFFF; --border:#E2E5E8; --hover:#EEF0F2; --text:#14181D; --muted:#5C6670;
+  --accent:#3F4A56; --accent-strong:#2B333C; --on-accent:#FFFFFF; --soft:#E9EDF1; --soft-text:#1F262E;
+  --s1:#1F262E; --s2:#4A5663; --s3:#8794A3; --s4:#CBD1D7;
+  --hero-bg:#2B333C; --hero-fg:#FFFFFF; --hero-btn-bg:#FFFFFF; --hero-btn-fg:#1F262E;
+  --warn:#C2540F; --danger:#C62828;
+}
+:root[data-theme="gris"][data-mode="dark"] {
+  --bg:#0F1114; --card:#171A1F; --border:#262B32; --hover:#1D2127; --text:#ECEFF2; --muted:#9AA4AF;
+  --accent:#C5CDD6; --accent-strong:#C5CDD6; --on-accent:#14181D; --soft:#232830; --soft-text:#E1E6EB;
+  --s1:#E1E6EB; --s2:#AEB8C3; --s3:#6F7B88; --s4:#3A424C;
+  --hero-bg:#1F242B; --hero-fg:#ECEFF2; --hero-btn-bg:#C5CDD6; --hero-btn-fg:#14181D;
+  --warn:#F0935A; --danger:#F27C7C;
+}
+
+/* ---------- Marron ---------- */
+:root[data-theme="marron"][data-mode="light"] {
+  --bg:#FAF7F4; --card:#FFFFFF; --border:#EADFD6; --hover:#F5EEE8; --text:#2A1D14; --muted:#7A6556;
+  --accent:#8A5A3C; --accent-strong:#8A5A3C; --on-accent:#FFFFFF; --soft:#F3E9E1; --soft-text:#5B3A24;
+  --s1:#5B3A24; --s2:#8A5A3C; --s3:#C79A78; --s4:#E3D3C6;
+  --hero-bg:#6B4429; --hero-fg:#FFFFFF; --hero-btn-bg:#FFFFFF; --hero-btn-fg:#5B3A24;
+  --warn:#C2540F; --danger:#C62828;
+}
+:root[data-theme="marron"][data-mode="dark"] {
+  --bg:#14100D; --card:#1D1712; --border:#2E251D; --hover:#251C15; --text:#F3EAE2; --muted:#B09C8B;
+  --accent:#D9A47F; --accent-strong:#D9A47F; --on-accent:#1D1712; --soft:#2B2018; --soft-text:#EBCDB4;
+  --s1:#E6B995; --s2:#C98E64; --s3:#8F6342; --s4:#4A382B;
+  --hero-bg:#2B2018; --hero-fg:#F3EAE2; --hero-btn-bg:#D9A47F; --hero-btn-fg:#1D1712;
+  --warn:#F0935A; --danger:#F27C7C;
+}
