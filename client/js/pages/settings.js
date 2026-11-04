@@ -2,6 +2,8 @@ import { api } from '../api.js';
 import { COLORS, MODES, getTheme, setTheme } from '../theme.js';
 import { html, raw } from '../lib/html.js';
 import { formatEUR } from '../lib/format.js';
+import { bookmarkletHref } from '../lib/capture.js';
+import { toast } from '../components/toast.js';
 
 export const title = 'Paramètres';
 
@@ -39,6 +41,19 @@ export async function mount(el, { user, logout }) {
                 </button>`)}
             </div>
           </section>
+          <section class="card" aria-label="Favori d'import">
+            <h2>Importer depuis mon navigateur</h2>
+            <p class="muted" style="margin:8px 0 16px">Pour Airbnb, Booking et tout site qui refuse les robots : le favori lit la page que <strong>vous</strong> regardez (nom, lieu, total, dates) et préremplit une réservation. Vous vérifiez avant d'ajouter.</p>
+            <ol class="muted" style="margin:0 0 16px 18px;line-height:1.7">
+              <li>Affichez la barre de favoris de votre navigateur (Ctrl+Maj+B).</li>
+              <li>Glissez le bouton ci-dessous dans cette barre.</li>
+              <li>Ouvrez l'annonce, choisissez vos dates, puis cliquez sur le favori.</li>
+            </ol>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+              <a class="btn btn-primary" id="bm-link" draggable="true" href="#/parametres">Importer dans Travel Planner</a>
+              <button type="button" class="btn btn-soft" data-copy-bm>Copier le code du favori</button>
+            </div>
+          </section>
           <section class="card" aria-label="Compte">
             <h2>Compte</h2>
             <p class="muted" style="margin:8px 0 16px">${user.firstName} · ${user.email}</p>
@@ -72,10 +87,25 @@ export async function mount(el, { user, logout }) {
     setTheme(patch);
     api.saveTheme(patch).catch(() => {}); // enregistré sur le compte ; le choix local reste appliqué en cas d'échec
     render();
+    wireBookmarklet();
     el.querySelector(`.tile[aria-pressed="true"]`)?.focus?.();
   };
 
+  const bm = bookmarkletHref(location.origin);
+  const wireBookmarklet = () => {
+    const a = el.querySelector('#bm-link');
+    if (a) a.setAttribute('href', bm); // posé après coup : le contenu de la page ne transite pas par le gabarit HTML
+  };
+  const onBmClick = async (e) => {
+    if (e.target.closest('#bm-link')) { e.preventDefault(); toast('Glissez ce bouton dans votre barre de favoris, ne cliquez pas dessus ici.'); }
+    if (e.target.closest('[data-copy-bm]')) {
+      try { await navigator.clipboard.writeText(bm); toast('Code copié : créez un favori et collez-le dans le champ « Adresse ».'); } catch { toast('Copie impossible : glissez le bouton à la place.'); }
+    }
+  };
+
   render();
+  wireBookmarklet();
   el.addEventListener('click', onClick);
-  return () => el.removeEventListener('click', onClick);
+  el.addEventListener('click', onBmClick);
+  return () => { el.removeEventListener('click', onClick); el.removeEventListener('click', onBmClick); };
 }

@@ -56,7 +56,25 @@ function reviewStep(result, trips, activeId, currencies) {
     </div>`;
 }
 
-export async function openImport() {
+// Données lues par le favori sur la page de l'utilisateur → même écran de vérification que l'import par lien.
+function captureResult(c) {
+  const warnings = [];
+  let priceFound = null;
+  if (c.price?.kind === 'night') warnings.push(`Seul un prix par nuit a été lu (« ${c.price.label} »), pas le total : saisissez le total du séjour.`);
+  else if (c.price) {
+    priceFound = { amount: c.price.amount, currency: c.price.currency };
+    if (c.price.label) warnings.push(`Lu sur la page : « ${c.price.label} ». Vérifiez le montant.`);
+  }
+  const dates = c.startDate && c.endDate;
+  const found = [c.name, c.location, c.category, dates, priceFound].filter(Boolean).length;
+  return {
+    url: c.url, host: c.host || 'la page', found, priceFound, warnings,
+    fields: { name: c.name || null, location: c.location || null, category: c.category || null, startDate: c.startDate || null, endDate: c.endDate || null },
+    sources: { name: Boolean(c.name) },
+  };
+}
+
+export async function openImport({ capture } = {}) {
   let trips = [];
   try {
     trips = await api.listTrips();
@@ -70,12 +88,13 @@ export async function openImport() {
   }
   const currencies = await loadCurrencies();
   const activeId = trips.some((t) => t.id === getActiveTripId()) ? getActiveTripId() : trips[0].id;
-  let step = 'url';
+  let step = capture ? 'review' : 'url';
 
   return openDialog({
-    title: 'Importer depuis un lien',
-    content: urlStep,
-    submitLabel: 'Analyser le lien',
+    title: capture ? 'Vérifier avant d\'ajouter' : 'Importer depuis un lien',
+    content: capture ? reviewStep(captureResult(capture), trips, activeId, currencies) : urlStep,
+    submitLabel: capture ? 'Ajouter au voyage' : 'Analyser le lien',
+    onMount: capture ? (dlg) => { wireAmountField(dlg); dlg.querySelector('#i-name')?.focus(); } : undefined,
     onSubmit: async (v, dlg) => {
       if (step === 'url') {
         const result = await api.importUrl(v.url); // les erreurs (captcha, adresse refusée...) s'affichent dans la boîte
@@ -94,7 +113,7 @@ export async function openImport() {
       };
       await api.createBooking(v.tripId, payload);
       setActiveTripId(v.tripId);
-      toast('Réservation ajoutée depuis le lien.');
+      toast(capture ? 'Réservation ajoutée depuis votre page.' : 'Réservation ajoutée depuis le lien.');
       if (location.hash === '#/reservations') window.dispatchEvent(new HashChangeEvent('hashchange'));
       else location.hash = '#/reservations';
       return undefined;

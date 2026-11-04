@@ -35,6 +35,10 @@ Bouton « Importer depuis un lien » : l'adresse d'une page (hôtel, restaurant,
 - Captcha, connexion obligatoire, limite d'accès : le site est signalé comme non lisible, **jamais contourné**. Beaucoup de grandes plateformes de réservation refusent les robots : saisissez alors la réservation à la main (le lien peut être conservé).
 - Sécurité : seules les adresses http/https des ports 80/443 sont acceptées ; réseau privé, localhost et adresses de métadonnées cloud sont refusés à chaque redirection et à la connexion réelle ; taille (1,5 Mo), durée (8 s) et redirections (4) limitées ; 10 analyses par minute et par utilisateur.
 
+## Favori d'import (Airbnb, Booking...)
+
+Paramètres → « Importer depuis mon navigateur » : on glisse un bouton dans la barre de favoris. Sur une annonce ouverte dans **votre** navigateur (dates choisies), un clic lit ce qui est affiché (nom, lieu, total avec devise, dates de l'adresse) et ouvre Travel Planner avec une réservation préremplie à vérifier. Les données passent dans la partie `#` de l'adresse (jamais envoyée à un serveur) et sont revalidées à la réception. Champ introuvable = champ vide ; un prix « par nuit » n'est jamais pris pour le total ; une devise ambiguë (« $ » seul) est à choisir.
+
 ## Structure
 
 ```
@@ -60,6 +64,7 @@ client/
 test/budget.test.js      Tests des règles budgétaires
 test/api.test.js         Tests de l'API (auth, isolation entre comptes, paiements, import)
 test/fx.test.js          Taux de change (sources, secours, cache, valeurs absurdes)
+test/capture.test.js     Favori d'import (lecture de la page, revalidation)
 test/ssrf.test.js        Adresses interdites (privées, locales, écritures déguisées)
 test/extract.test.js     Extraction des informations d'une page
 test/import.test.js      Import sur de faux sites (captcha, redirections, pages géantes...)

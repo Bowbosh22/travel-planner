@@ -9,6 +9,7 @@ import * as bookings from './pages/bookings.js';
 import * as settings from './pages/settings.js';
 import * as placeholder from './pages/placeholder.js';
 import * as login from './pages/login.js';
+import { takeCapture } from './lib/capture.js';
 
 const view = document.getElementById('view');
 const sidebar = document.getElementById('sidebar');
@@ -20,6 +21,7 @@ let user = null;
 let destroyCurrent = () => {};
 let token = 0;
 let first = true;
+let pendingCapture = takeCapture(); // données du favori « Importer », à présenter après connexion
 
 async function logout() {
   await api.logout().catch(() => {});
@@ -77,6 +79,7 @@ async function render() {
     view.innerHTML = `<section class="card empty"><h2>Une erreur est survenue</h2><p>${err.status === 0 ? err.message : 'Rechargez la page. Si le problème persiste, réessayez plus tard.'}</p></section>`;
   }
 
+  if (pendingCapture) { const c = pendingCapture; pendingCapture = null; openImport({ capture: c }); }
   if (!first) { window.scrollTo({ top: 0 }); view.focus({ preventScroll: true }); }
   first = false;
 }
