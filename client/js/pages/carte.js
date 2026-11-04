@@ -9,7 +9,7 @@ import { getActiveTripId, setActiveTripId } from '../store.js';
 export const title = 'Carte';
 
 let leafletReady = null;
-function loadLeaflet() {
+export function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
   leafletReady ??= new Promise((resolve, reject) => {
     const css = document.createElement('link');

@@ -3,13 +3,13 @@ import { NAV } from '../nav.js';
 import { html } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 
-const link = (item, path) => html`<a class="nav-item" href="#${item.path}" ${item.path === path ? html`aria-current="page"` : ''}>${icon(item.icon)}${item.label}</a>`;
+const link = (item, path) => html`<a class="nav-item" href="#${item.path}" data-label="${item.label}" ${item.path === path ? html`aria-current="page"` : ''}>${icon(item.icon)}<span class="nav-label">${item.label}</span></a>`;
 
 export function renderSidebar(el, path) {
   const main = NAV.filter((n) => !n.footer);
   const footer = NAV.filter((n) => n.footer);
   el.innerHTML = String(html`
-    <div class="brand"><span class="brand-mark">${icon('compass', 18)}</span>Travel Planner</div>
+    <a class="brand" href="#/" data-label="Travel Planner"><span class="brand-mark">${icon('compass', 18)}</span><span class="nav-label">Travel Planner</span></a>
     ${main.map((n) => link(n, path))}
     <div class="sidebar-spacer"></div>
     ${footer.map((n) => link(n, path))}

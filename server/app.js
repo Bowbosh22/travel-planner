@@ -10,12 +10,13 @@ import { createFxService } from './fx/rates.js';
 import { createDocumentRoutes } from './routes/documents.js';
 import { createGeoRoutes } from './routes/geo.js';
 import { createGeocoder } from './geo/nominatim.js';
+import { createImageFinder } from './images/wikipedia.js';
 import { rateLimit } from './ratelimit.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // importOptions : réservé aux tests (autoriser un serveur local). Jamais piloté par une variable d'environnement.
-export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), limits = {} } = {}) {
+export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), images = createImageFinder(), limits = {} } = {}) {
   const maxRegistrations = limits.registrationsPerHour ?? 10; // réglable pour les tests uniquement
   const app = express();
   app.disable('x-powered-by');
@@ -30,7 +31,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
           scriptSrc: ["'self'"],
           styleSrc: ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
           fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-          imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org'], // fonds de carte OpenStreetMap
+          imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', 'https://upload.wikimedia.org'], // fonds de carte OpenStreetMap + photos des villes (Wikipédia)
           connectSrc: ["'self'"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
@@ -76,7 +77,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
   api.use('/auth', auth.router);
   // Filet de sécurité : au plus 300 écritures par minute et par utilisateur connecté.
   api.use(auth.requireUser, (req, res, next) => (['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? next() : writeLimit(req, res, next)));
-  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder));
+  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx, images), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder));
 
   api.use((_req, res) => res.status(404).json({ error: 'Introuvable.' }));
   // JSON invalide, etc. : jamais de trace technique envoyée au navigateur.
@@ -91,7 +92,8 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
 
   app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), { maxAge: '1d' }));
   app.use('/vendor/chart.js', express.static(path.join(root, 'node_modules', 'chart.js', 'dist'), { maxAge: '1d' }));
-  app.use(express.static(path.join(root, 'client'), { extensions: ['html'] }));
+  // no-cache : le navigateur revérifie à chaque visite (ETag), donc une mise à jour du site s'affiche tout de suite.
+  app.use(express.static(path.join(root, 'client'), { extensions: ['html'], setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
   app.use((_req, res) => res.status(404).type('text/plain').send('Page introuvable'));
   return app;
 }

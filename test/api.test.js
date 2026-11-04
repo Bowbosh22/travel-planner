@@ -56,12 +56,14 @@ function client() {
 const trip = { name: 'Lisbonne', destination: 'Lisbonne', country: 'Portugal', startDate: '2026-12-12', endDate: '2026-12-19', travelers: 2, budgetEur: 2000 };
 const signup = (c, email = 'a@test.fr', extra = {}) => c.post('/api/auth/register', { firstName: 'Ana', email, password: 'motdepasse-long', ...extra });
 
+const fakeImages = { find: async (d) => (d === 'Nullepart' ? null : { url: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/${encodeURIComponent(d)}.jpg/1280px-${encodeURIComponent(d)}.jpg`, credit: `https://fr.wikipedia.org/wiki/${encodeURIComponent(d)}` }) };
+
 before(async () => {
   if (skip) return;
   pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, limits: { registrationsPerHour: 10_000 }, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
+  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, images: fakeImages, limits: { registrationsPerHour: 10_000 }, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
@@ -546,4 +548,20 @@ test('parcours complet : voyage, réservation en dollars, paiement, budget dépa
   assert.equal(list.reduce((s, x) => s + x.amountEur, 0), 1200, 'prévisionnel > budget de 1 000 € : le tableau de bord signalera le dépassement');
   assert.equal((await c.del(`/api/trips/${t.id}`)).status, 200);
   assert.equal((await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.length, 0);
+});
+
+test('photo de la destination : trouvée à la création, changée avec la destination, relançable', { skip }, async () => {
+  const c = client();
+  await signup(c, 'img@test.fr');
+  const t = (await c.post('/api/trips', trip)).body.trip;
+  assert.match(t.imageUrl, /^https:\/\/upload\.wikimedia\.org\//);
+  assert.match(t.imageCredit, /wikipedia\.org/);
+  const moved = (await c.raw('PUT', `/api/trips/${t.id}`, { ...trip, destination: 'Porto' })).body.trip;
+  assert.match(moved.imageUrl, /Porto/);
+  const none = (await c.post('/api/trips', { ...trip, destination: 'Nullepart' })).body.trip;
+  assert.equal(none.imageUrl, null);
+  assert.equal((await c.post(`/api/trips/${none.id}/image`, {})).status, 200);
+  const other = client();
+  await signup(other, 'img2@test.fr');
+  assert.equal((await other.post(`/api/trips/${t.id}/image`, {})).status, 404);
 });

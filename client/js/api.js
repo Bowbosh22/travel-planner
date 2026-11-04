@@ -93,5 +93,6 @@ export const api = {
   listDocuments: (tripId) => request('GET', `/trips/${tripId}/documents`),
   uploadDocument: uploadFile,
   deleteDocument: (id) => request('DELETE', `/documents/${id}`),
+  refreshTripImage: async (id) => (await request('POST', `/trips/${id}/image`)).trip,
   geocodeBooking: (id) => request('POST', `/bookings/${id}/geocode`),
 };

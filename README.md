@@ -117,3 +117,13 @@ Limites du gratuit : l'application s'endort après 15 min sans visite (la premi�
 3. Commande de démarrage : `npm start`. Railway fournit `PORT` automatiquement.
 
 Ne mettez jamais de mot de passe ou d'adresse de base dans le code ni dans GitHub : uniquement dans les variables Railway.
+
+## Disposition du tableau de bord
+
+Barre de navigation flottante à gauche (icônes seules, nom au survol), en-tête avec salutation, choix du voyage, import et avatar, puis bloc voyage à gauche, budget (anneau) et prochaines réservations à droite, et trois cartes en bas : catégories, carte du voyage, prévu/payé. Sur mobile, la barre d'onglets du bas est conservée et tout passe sur une colonne.
+
+Thème « Paysage » (par défaut) : fond de montagnes dans la brume et cartes en verre dépoli. Les thèmes Bleu, Gris et Marron restent disponibles dans Paramètres. La migration 005 s'applique toute seule au démarrage.
+
+## Photo de la destination
+
+À la création d'un voyage (ou au changement de destination), le serveur cherche la photo de la ville sur Wikipédia (gratuit, sans clé ; français puis anglais). Elle s'affiche dans le bloc voyage de l'accueil, avec un lien « Photo : Wikipédia ». Si rien n'est trouvé, un bouton « Chercher une photo » permet de réessayer. Seules les images de upload.wikimedia.org sont acceptées (migration 006).

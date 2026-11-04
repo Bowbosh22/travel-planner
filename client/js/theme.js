@@ -3,9 +3,10 @@
 // Étape 3 : le choix sera aussi enregistré sur le compte (users.theme_color, users.theme_mode).
 
 const KEY = 'tp.theme';
-const DEFAULTS = { color: 'bleu', mode: 'clair' };
+const DEFAULTS = { color: 'paysage', mode: 'sombre' };
 
 export const COLORS = [
+  { id: 'paysage', label: 'Paysage', swatches: ['#10211F', '#3A5F5A', '#9FD3C2', '#F0A25A'] },
   { id: 'bleu', label: 'Bleu', swatches: ['#1B3F8F', '#2456C9', '#7FA6F5', '#C9D3E8'] },
   { id: 'gris', label: 'Gris', swatches: ['#1F262E', '#4A5663', '#8794A3', '#CBD1D7'] },
   { id: 'marron', label: 'Marron', swatches: ['#5B3A24', '#8A5A3C', '#C79A78', '#E3D3C6'] },

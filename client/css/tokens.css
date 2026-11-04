@@ -56,3 +56,22 @@
   --hero-bg:#2B2018; --hero-fg:#F3EAE2; --hero-btn-bg:#D9A47F; --hero-btn-fg:#1D1712;
   --warn:#F0935A; --danger:#F27C7C;
 }
+
+/* ---------- Paysage (verre dépoli sur fond de montagnes) : identique en clair et en sombre ---------- */
+:root[data-theme="paysage"] {
+  --bg:#10211f; --card:rgba(255,255,255,0.11); --border:rgba(255,255,255,0.20); --hover:rgba(255,255,255,0.14); --text:#F3F7F5; --muted:rgba(243,247,245,0.72);
+  --accent:#F0A25A; --accent-strong:#F0A25A; --on-accent:#1A1208; --soft:rgba(255,255,255,0.16); --soft-text:#FFFFFF;
+  --s1:#F0A25A; --s2:#9FD3C2; --s3:#6FA89A; --s4:rgba(255,255,255,0.35);
+  --hero-bg:rgba(8,20,20,0.55); --hero-fg:#FFFFFF; --hero-btn-bg:#F0A25A; --hero-btn-fg:#1A1208;
+  --warn:#FFB26B; --danger:#FF8A8A;
+  color-scheme: dark;
+}
+:root[data-theme="paysage"] body { background: #10211f url('/img/paysage.svg') center / cover fixed no-repeat; }
+:root[data-theme="paysage"] .card, :root[data-theme="paysage"] .sidebar, :root[data-theme="paysage"] .tabbar {
+  -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+}
+:root[data-theme="paysage"] .hero-big { background: linear-gradient(180deg, rgba(8,20,20,.15), rgba(8,20,20,.72)); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border: 1px solid var(--border); }
+:root[data-theme="paysage"] .hero-big::before { display: none; }
+:root[data-theme="paysage"] .dialog, :root[data-theme="paysage"] .sheet { background: #16302d; color: var(--text); }
+:root[data-theme="paysage"] .select, :root[data-theme="paysage"] input, :root[data-theme="paysage"] textarea { background: rgba(255,255,255,0.10); }
+:root[data-theme="paysage"] option { background: #16302d; color: #fff; }

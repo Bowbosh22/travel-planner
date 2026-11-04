@@ -13,7 +13,7 @@ function tripOut(r, today = todayIso()) {
   return {
     id: r.id, name: r.name, destination: r.destination, country: r.country,
     startDate: r.start_date, endDate: r.end_date, travelers: r.travelers,
-    budgetEur: r.budget_eur, planStatus: r.plan_status, status,
+    budgetEur: r.budget_eur, planStatus: r.plan_status, status, imageUrl: r.image_url, imageCredit: r.image_credit,
   };
 }
 
@@ -54,7 +54,7 @@ async function recomputePaymentsEur(client, bookingId) {
   }
 }
 
-export function createTripRoutes(pool, fx) {
+export function createTripRoutes(pool, fx, images) {
   const router = express.Router();
   const bad = (res, msg) => res.status(400).json({ error: msg });
   const notFound = (res) => res.status(404).json({ error: 'Introuvable.' });
@@ -75,6 +75,21 @@ export function createTripRoutes(pool, fx) {
     } catch (err) { next(err); }
   });
 
+  // Cherche la photo de la destination (échec silencieux : le voyage reste utilisable sans image).
+  async function refreshImage(tripId, destination) {
+    const found = await images.find(destination);
+    const { rows } = await pool.query('UPDATE trips SET image_url=$2, image_credit=$3 WHERE id=$1 RETURNING *', [tripId, found?.url ?? null, found?.credit ?? null]);
+    return rows[0];
+  }
+
+  router.post('/trips/:id/image', async (req, res, next) => {
+    try {
+      const { rows } = await pool.query('SELECT id, destination FROM trips WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+      if (!rows[0]) return notFound(res);
+      res.json({ trip: tripOut(await refreshImage(rows[0].id, rows[0].destination)) });
+    } catch (err) { next(err); }
+  });
+
   router.post('/trips', async (req, res, next) => {
     try {
       const p = validateTrip(req.body);
@@ -85,7 +100,7 @@ export function createTripRoutes(pool, fx) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
         [req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus]
       );
-      res.status(201).json({ trip: tripOut(rows[0]) });
+      res.status(201).json({ trip: tripOut(await refreshImage(rows[0].id, v.destination)) });
     } catch (err) { next(err); }
   });
 
@@ -94,12 +109,15 @@ export function createTripRoutes(pool, fx) {
       const p = validateTrip(req.body);
       if (p.error) return bad(res, p.error);
       const v = p.value;
+      const before = (await pool.query('SELECT destination, image_url FROM trips WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])).rows[0];
       const { rows } = await pool.query(
         `UPDATE trips SET name=$3, destination=$4, country=$5, start_date=$6, end_date=$7, travelers=$8, budget_eur=$9, plan_status=$10
          WHERE id=$1 AND user_id=$2 RETURNING *`,
         [req.params.id, req.user.id, v.name, v.destination, v.country, v.startDate, v.endDate, v.travelers, v.budgetEur, v.planStatus]
       );
-      rows[0] ? res.json({ trip: tripOut(rows[0]) }) : notFound(res);
+      if (!rows[0]) return notFound(res);
+      const row = before && (before.destination !== v.destination || !before.image_url) ? await refreshImage(rows[0].id, v.destination) : rows[0];
+      res.json({ trip: tripOut(row) });
     } catch (err) { next(err); }
   });
 

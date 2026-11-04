@@ -1,7 +1,7 @@
 // Chargé en premier et de façon synchrone : applique le thème avant le premier affichage
 // pour éviter un flash de la mauvaise couleur.
 (function () {
-  var t = { color: 'bleu', mode: 'clair' };
+  var t = { color: 'paysage', mode: 'sombre' };
   try {
     var saved = JSON.parse(localStorage.getItem('tp.theme') || '{}');
     if (saved.color) t.color = saved.color;

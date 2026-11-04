@@ -149,7 +149,7 @@ export function createAuth(pool, { secureCookie = false } = {}) {
   router.patch('/theme', requireUser, async (req, res, next) => {
     try {
       const { color, mode } = req.body ?? {};
-      const colors = ['bleu', 'gris', 'marron'];
+      const colors = ['paysage', 'bleu', 'gris', 'marron'];
       const modes = ['clair', 'sombre', 'auto'];
       if ((color !== undefined && !colors.includes(color)) || (mode !== undefined && !modes.includes(mode))) {
         return res.status(400).json({ error: 'Thème invalide.' });
