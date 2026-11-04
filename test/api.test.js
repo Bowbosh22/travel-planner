@@ -792,3 +792,49 @@ test('profil : changement du prénom (validation, connexion requise)', { skip },
   assert.equal(ok.body.user.firstName, 'Marie');
   assert.equal((await c.get('/api/auth/me')).body.user.firstName, 'Marie');
 });
+
+test('préférences : liste blanche, fusion, retour à la disposition d\'origine', { skip }, async () => {
+  assert.equal((await client().raw('PUT', '/api/auth/prefs', { home: 'carte' })).status, 401);
+  const c = client();
+  const reg = await signup(c, `prefs-${Date.now()}@test.fr`);
+  assert.deepEqual(reg.body.user.prefs, {});
+  assert.equal((await c.put('/api/auth/prefs', { currency: 'GBP' })).status, 400);
+  assert.equal((await c.put('/api/auth/prefs', { home: 'ailleurs' })).status, 400);
+  assert.equal((await c.put('/api/auth/prefs', { textSize: 'enorme' })).status, 400);
+  assert.equal((await c.put('/api/auth/prefs', { layout: { order: ['hero', 'pirate'], sizes: {} } })).status, 200); // id inconnu ignoré
+  assert.equal((await c.put('/api/auth/prefs', { layout: 'x' })).status, 400);
+  assert.equal((await c.put('/api/auth/prefs', {})).status, 400);
+  await c.put('/api/auth/prefs', { currency: 'XAF', home: 'carte' });
+  const r = await c.put('/api/auth/prefs', { textSize: 'large', layout: { order: ['map', 'hero', 'map'], hidden: ['alerts', 'x'], sizes: { hero: 'F', map: 'Z', weather: 'S' } } });
+  assert.deepEqual(r.body.prefs, { currency: 'XAF', home: 'carte', textSize: 'large', layout: { order: ['map', 'hero'], hidden: ['alerts'], sizes: { hero: 'F', weather: 'S' } } });
+  assert.equal((await c.get('/api/auth/me')).body.user.prefs.home, 'carte');
+  const reset = await c.put('/api/auth/prefs', { layout: null });
+  assert.equal(reset.body.prefs.layout, undefined);
+  assert.equal(reset.body.prefs.currency, 'XAF');
+});
+
+test('appareils connectés : liste, déconnexion d\'un appareil, des autres', { skip }, async () => {
+  const email = `dev-${Date.now()}@test.fr`;
+  const a = client(); const b = client(); const c = client();
+  await signup(a, email);
+  await b.post('/api/auth/login', { email, password: 'motdepasse-long' });
+  await c.post('/api/auth/login', { email, password: 'motdepasse-long' });
+  assert.equal((await client().get('/api/auth/sessions')).status, 401);
+  const list = (await a.get('/api/auth/sessions')).body.sessions;
+  assert.equal(list.length, 3);
+  assert.equal(list.filter((s) => s.current).length, 1);
+  const me = list.find((s) => s.current);
+  const other = list.find((s) => !s.current);
+  assert.equal((await a.del(`/api/auth/sessions/${me.id}`)).status, 404); // pas sa propre session ici (voir « Se déconnecter »)
+  assert.equal((await a.del('/api/auth/sessions/pas-un-uuid')).status, 404);
+  assert.equal((await a.del(`/api/auth/sessions/${other.id}`)).status, 200);
+  assert.equal((await a.get('/api/auth/sessions')).body.sessions.length, 2);
+  assert.equal((await a.del('/api/auth/sessions')).body.closed, 1);
+  assert.equal((await a.get('/api/trips')).status, 200);
+  const stillOpen = [(await b.get('/api/trips')).status, (await c.get('/api/trips')).status].filter((s) => s === 200).length;
+  assert.equal(stillOpen, 0);
+  // un autre compte ne peut pas fermer mes sessions
+  const x = client(); await signup(x, `dev2-${Date.now()}@test.fr`);
+  assert.equal((await x.del(`/api/auth/sessions/${me.id}`)).status, 404);
+  assert.equal((await a.get('/api/trips')).status, 200);
+});

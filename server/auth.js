@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import express from 'express';
 import { validateRegistration, validateFirstName } from './validate.js';
+import { validatePrefs, mergePrefs } from './prefs.js';
 
 const scrypt = promisify(crypto.scrypt);
 const COOKIE = 'tp_session';
@@ -44,7 +45,7 @@ function readCookie(req, name) {
   return null;
 }
 
-const publicUser = (u) => ({ id: u.id, email: u.email, firstName: u.first_name, theme: { color: u.theme_color, mode: u.theme_mode } });
+const publicUser = (u) => ({ id: u.id, email: u.email, firstName: u.first_name, theme: { color: u.theme_color, mode: u.theme_mode }, prefs: u.prefs ?? {} });
 
 // Anti force brute : 8 échecs par adresse email + IP sur 15 minutes.
 function createLimiter(max = 8, windowMs = 15 * 60 * 1000) {
@@ -89,10 +90,10 @@ export function createAuth(pool, { secureCookie = false } = {}) {
   }
   const ipLimiter = createLimiter(40); // filet : trop d'échecs depuis une même adresse, quels que soient les emails essayés
 
-  async function startSession(res, userId, remember) {
+  async function startSession(req, res, userId, remember) {
     const token = crypto.randomBytes(32).toString('base64url');
     const ttl = remember ? REMEMBER_MS : SHORT_MS;
-    await pool.query('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)', [sha256(token), userId, new Date(Date.now() + ttl)]);
+    await pool.query('INSERT INTO sessions (token_hash, user_id, expires_at, user_agent) VALUES ($1, $2, $3, $4)', [sha256(token), userId, new Date(Date.now() + ttl), String(req.headers['user-agent'] ?? '').slice(0, 300)]);
     const opts = { httpOnly: true, sameSite: 'lax', secure: secureCookie, path: '/' };
     if (remember) opts.maxAge = ttl; // sans maxAge : cookie de session, effacé à la fermeture du navigateur
     res.cookie(COOKIE, token, opts);
@@ -104,11 +105,16 @@ export function createAuth(pool, { secureCookie = false } = {}) {
       const token = readCookie(req, COOKIE);
       if (token) {
         const { rows } = await pool.query(
-          `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+          `SELECT u.*, s.id AS session_id, s.last_seen_at AS session_seen FROM sessions s JOIN users u ON u.id = s.user_id
            WHERE s.token_hash = $1 AND s.expires_at > now()`,
           [sha256(token)]
         );
-        if (rows[0]) req.user = rows[0];
+        if (rows[0]) {
+          req.user = rows[0];
+          req.sessionId = rows[0].session_id;
+          // dernière activité : au plus une écriture toutes les 10 minutes par appareil
+          if (Date.now() - new Date(rows[0].session_seen).getTime() > 10 * 60 * 1000) pool.query('UPDATE sessions SET last_seen_at = now() WHERE id = $1', [rows[0].session_id]).catch(() => {});
+        }
       }
       next();
     } catch (err) {
@@ -141,7 +147,7 @@ export function createAuth(pool, { secureCookie = false } = {}) {
       }
       if (invite) await joinByToken(pool, user.id, invite); // le nouveau compte rejoint le voyage tout de suite
       const recoveryCodes = await issueRecoveryCodes(user.id);
-      await startSession(res, user.id, req.body.remember === true);
+      await startSession(req, res, user.id, req.body.remember === true);
       res.status(201).json({ user: publicUser(user), recoveryCodes });
     } catch (err) {
       next(err);
@@ -163,7 +169,7 @@ export function createAuth(pool, { secureCookie = false } = {}) {
         return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
       }
       limiter.clear(key);
-      await startSession(res, rows[0].id, req.body.remember === true);
+      await startSession(req, res, rows[0].id, req.body.remember === true);
       res.json({ user: publicUser(rows[0]) });
     } catch (err) {
       next(err);
@@ -209,6 +215,42 @@ export function createAuth(pool, { secureCookie = false } = {}) {
     } catch (err) {
       next(err);
     }
+  });
+
+  // Préférences (devise d'affichage, page de lancement, taille du texte, disposition du tableau de bord).
+  router.put('/prefs', requireUser, async (req, res, next) => {
+    try {
+      const parsed = validatePrefs(req.body);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      const { rows } = await pool.query('UPDATE users SET prefs = $2::jsonb WHERE id = $1 RETURNING *', [req.user.id, JSON.stringify(mergePrefs(req.user.prefs, parsed.value))]);
+      res.json({ prefs: rows[0].prefs });
+    } catch (err) { next(err); }
+  });
+
+  // Appareils connectés.
+  const deviceLabel = (ua = '') => {
+    const os = /iPhone|iPad/.test(ua) ? 'iPhone / iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Appareil inconnu';
+    const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /(Chrome|CriOS)\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Navigateur';
+    return `${browser} · ${os}`;
+  };
+  router.get('/sessions', requireUser, async (req, res, next) => {
+    try {
+      const { rows } = await pool.query('SELECT id, user_agent, created_at, last_seen_at FROM sessions WHERE user_id = $1 AND expires_at > now() ORDER BY last_seen_at DESC', [req.user.id]);
+      res.json({ sessions: rows.map((r) => ({ id: r.id, device: deviceLabel(r.user_agent ?? ''), createdAt: r.created_at, lastSeenAt: r.last_seen_at, current: r.id === req.sessionId })) });
+    } catch (err) { next(err); }
+  });
+  router.delete('/sessions/:id', requireUser, async (req, res, next) => {
+    try {
+      if (!/^[0-9a-f-]{36}$/i.test(req.params.id) || req.params.id === req.sessionId) return res.status(404).json({ error: 'Introuvable.' });
+      const { rowCount } = await pool.query('DELETE FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+      rowCount ? res.json({ ok: true }) : res.status(404).json({ error: 'Introuvable.' });
+    } catch (err) { next(err); }
+  });
+  router.delete('/sessions', requireUser, async (req, res, next) => {
+    try {
+      const { rowCount } = await pool.query('DELETE FROM sessions WHERE user_id = $1 AND id <> $2', [req.user.id, req.sessionId]);
+      res.json({ closed: rowCount });
+    } catch (err) { next(err); }
   });
 
   // Changement du prénom affiché.

@@ -3,7 +3,7 @@ import { summarize } from '../services/budget.js';
 import { chartsMarkup, mountCharts } from '../components/budget-charts.js';
 import { announceBudget, budgetBanner } from '../components/budget-alert.js';
 import { html, raw } from '../lib/html.js';
-import { formatEUR, formatPercent, daysBetween, plural } from '../lib/format.js';
+import { formatEUR, formatPercent, daysBetween, plural, displayCurrencyName } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 
 export const title = 'Budget';
@@ -29,7 +29,7 @@ export async function mount(el) {
 
   el.innerHTML = String(html`
     <header class="page-head">
-      <div><h1>Budget</h1><p>${trip.name} · tout est calculé en euros, taux figés à l'enregistrement.</p></div>
+      <div><h1>Budget</h1><p>${trip.name} · affiché en ${displayCurrencyName()} (montants enregistrés en euros, taux figés à l'enregistrement).</p></div>
       <div class="page-actions">
         <label class="sr-only" for="trip-select">Voyage</label>
         <select id="trip-select" class="select">${trips.map((t) => html`<option value="${t.id}" ${t.id === trip.id ? raw('selected') : ''}>${t.name}</option>`)}</select>

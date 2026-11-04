@@ -5,6 +5,8 @@ import { formatEUR } from '../lib/format.js';
 import { bookmarkletHref } from '../lib/capture.js';
 import { toast } from '../components/toast.js';
 import { confirmDialog } from '../components/dialog.js';
+import { getPrefs, savePrefs } from '../prefs.js';
+import { displayCurrency } from '../lib/format.js';
 import { askNewRecoveryCodes } from '../components/recovery-dialog.js';
 
 export const title = 'Paramètres';
@@ -22,6 +24,7 @@ export async function mount(el, { user, logout }) {
   let tab = readTab();
   const render = () => {
     const theme = getTheme();
+    const prefs = getPrefs();
     el.innerHTML = String(html`
       <header class="page-head"><div><h1>Paramètres</h1><p>${tab === 'compte' ? 'Votre compte, votre mot de passe et les voyageurs de vos voyages.' : "Choisissez le mode, la couleur et le fond du site. Le choix est enregistré sur votre compte."}</p></div></header>
       <div class="seg-tabs" role="tablist" aria-label="Paramètres">
@@ -72,6 +75,32 @@ export async function mount(el, { user, logout }) {
               ${getCustomBackground() ? html`<button type="button" class="btn btn-ghost btn-sm" data-bg-clear>Retirer ma photo</button>` : ''}
             </div>
             <p class="muted" style="margin-top:12px;font-size:13px">Le fond s'affiche avec la couleur Paysage, et se règle sur cet appareil. Votre photo reste dans votre navigateur.</p>
+          </section>
+          <section class="card" aria-label="Taille du texte">
+            <h2>Taille du texte</h2>
+            <div class="opt-row" role="group" aria-label="Taille du texte">
+              ${[['small', 'Petite'], ['normal', 'Normale'], ['large', 'Grande']].map(([v, l]) => html`<button type="button" class="opt-btn" data-pref="textSize" data-val="${v}" aria-pressed="${(prefs.textSize ?? 'normal') === v}">${l}</button>`)}
+            </div>
+            <p class="muted" style="margin-top:12px;font-size:13px">Agrandit ou réduit le texte et les éléments des pages (pratique sur téléphone).</p>
+          </section>
+          <section class="card" aria-label="Devise d'affichage">
+            <h2>Devise d'affichage</h2>
+            <div class="opt-row" role="group" aria-label="Devise d'affichage">
+              ${[['EUR', 'Euro (€)'], ['USD', 'Dollar US ($)'], ['XAF', 'Franc CFA (FCFA)']].map(([v, l]) => html`<button type="button" class="opt-btn" data-pref="currency" data-val="${v}" aria-pressed="${displayCurrency() === v}">${l}</button>`)}
+            </div>
+            <p class="muted" style="margin-top:12px;font-size:13px">Les montants restent enregistrés en euros ; seul l'affichage est converti au taux du jour (parité fixe pour le franc CFA). Les formulaires de saisie restent en euros.</p>
+          </section>
+          <section class="card" aria-label="Page de lancement">
+            <h2>Page affichée au lancement</h2>
+            <div class="opt-row" role="group" aria-label="Page de lancement">
+              ${[['dashboard', 'Dashboard'], ['voyages', 'Mes voyages'], ['carte', 'Carte']].map(([v, l]) => html`<button type="button" class="opt-btn" data-pref="home" data-val="${v}" aria-pressed="${(prefs.home ?? 'dashboard') === v}">${l}</button>`)}
+            </div>
+            <p class="muted" style="margin-top:12px;font-size:13px">Page ouverte quand vous ouvrez le site ou vous connectez.</p>
+          </section>
+          <section class="card" aria-label="Tableau de bord">
+            <h2>Tableau de bord</h2>
+            <p class="muted" style="margin:8px 0 12px">Déplacez, redimensionnez ou masquez les widgets : sur le Dashboard, bouton « Personnaliser ».</p>
+            <div class="row-actions"><a class="btn btn-soft" href="#/" data-go-dash>Ouvrir le Dashboard</a><button type="button" class="btn btn-ghost" data-layout-reset>Disposition d'origine</button></div>
           </section>
           <section class="card" aria-label="Favori d'import">
             <h2>Importer depuis mon navigateur</h2>
@@ -135,6 +164,10 @@ export async function mount(el, { user, logout }) {
             <h2>Voyageurs de mes voyages</h2>
             <div id="members-box"><p class="muted">Chargement…</p></div>
           </section>
+          <section class="card" aria-label="Appareils connectés">
+            <h2>Appareils connectés</h2>
+            <div id="dev-box"><p class="muted">Chargement…</p></div>
+          </section>
           <section class="card" aria-label="Session">
             <h2>Session</h2>
             <p class="muted" style="margin:8px 0 16px">${user.firstName} · ${user.email}</p>
@@ -143,7 +176,20 @@ export async function mount(el, { user, logout }) {
         </div>
       </div>`}
     `);
-    if (tab === 'compte') { loadCount(); loadMembers(); } else wireBookmarklet();
+    if (tab === 'compte') { loadCount(); loadMembers(); loadDevices(); } else wireBookmarklet();
+  };
+
+  // Appareils connectés : sessions ouvertes sur ce compte (cet appareil est repéré ; les autres peuvent être déconnectés).
+  const when = (iso) => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
+  const loadDevices = async () => {
+    const box = el.querySelector('#dev-box');
+    if (!box) return;
+    try {
+      const list = await api.sessions();
+      if (!box.isConnected) return;
+      box.innerHTML = String(html`<ul class="dev-list">${list.map((d) => html`<li><div><strong>${d.device}</strong>${d.current ? html` <span class="badge badge-ok">Cet appareil</span>` : ''}<span class="muted small-line">Dernière activité : ${when(d.lastSeenAt)}</span></div>${d.current ? '' : html`<button type="button" class="link-btn danger-text" data-dev-close="${d.id}">Déconnecter</button>`}</li>`)}</ul>
+        ${list.length > 1 ? html`<button type="button" class="btn btn-soft" data-dev-closeall>Déconnecter tous les autres appareils</button>` : html`<p class="muted small-line">Aucun autre appareil connecté.</p>`}`);
+    } catch { if (box.isConnected) box.innerHTML = '<p class="muted">Impossible de charger la liste. Réessayez.</p>'; }
   };
 
   // Voyageurs : seulement les voyages que j'ai créés (le serveur refuse aussi toute autre demande).
@@ -203,6 +249,17 @@ export async function mount(el, { user, logout }) {
       tab = tabBtn.dataset.tab;
       try { sessionStorage.setItem(TAB_KEY, tab); } catch { /* facultatif */ }
       return render();
+    }
+    const pref = e.target.closest('[data-pref]');
+    if (pref) {
+      const patch = { [pref.dataset.pref]: pref.dataset.val };
+      return savePrefs(patch).then((ok) => { if (!ok) toast('Choix appliqué sur cet appareil seulement (connexion au serveur impossible).', 4000, 'warn'); render(); });
+    }
+    if (e.target.closest('[data-layout-reset]')) return savePrefs({ layout: null }).then(() => toast('Disposition d\'origine rétablie.'));
+    const dc = e.target.closest('[data-dev-close]');
+    if (dc) return api.closeSession(dc.dataset.devClose).then(() => { toast('Appareil déconnecté.'); loadDevices(); }).catch((ex) => toast(ex.message || 'Action impossible.', 4000, 'error'));
+    if (e.target.closest('[data-dev-closeall]')) {
+      return confirmDialog({ title: 'Déconnecter les autres appareils ?', text: 'Tous les appareils sauf celui-ci devront se reconnecter avec le mot de passe.', confirmLabel: 'Déconnecter', onConfirm: async () => { const n = await api.closeOtherSessions(); toast(`${n} appareil${n > 1 ? 's' : ''} déconnecté${n > 1 ? 's' : ''}.`); loadDevices(); } });
     }
     const rm = e.target.closest('[data-rm-member]');
     if (rm) {

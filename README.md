@@ -166,3 +166,11 @@ Dans la mini-carte « Voyage avec » de l'accueil, le bouton « + » permet d'aj
 - Secours si plus aucun code : `node scripts/hash-password.js "nouveau mot de passe"` affiche un hash ; dans la console SQL de Neon :
   `UPDATE users SET password_hash = '<hash>' WHERE lower(email) = 'votre@email';` puis supprimer les sessions : `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE lower(email)='votre@email');`
 - Migration `011_recovery_codes.sql` appliquée automatiquement au démarrage.
+
+
+## Paramètres : préférences, appareils, tableau de bord personnalisable
+
+- **Affichage du site** : mode, couleur, fond d'écran, taille du texte (petite / normale / grande), devise d'affichage (euro, dollar US, franc CFA : les montants restent enregistrés en euros, seul l'affichage est converti), page affichée au lancement (Dashboard, Mes voyages, Carte).
+- **Mon compte** : prénom, mot de passe, codes de récupération, voyageurs de mes voyages (retrait réservé au créateur), **appareils connectés** (déconnexion d'un appareil ou de tous les autres), déconnexion.
+- **Dashboard** : bouton « Personnaliser » : déplacer (← →), taille S / M / L / XL, masquer ou réafficher chaque widget ; « Disposition d'origine » pour tout remettre. Enregistré sur le compte.
+- Préférences stockées dans `users.prefs` (liste blanche côté serveur) ; appareils : `sessions.id / user_agent / last_seen_at`. Migration `012_prefs_sessions.sql` appliquée automatiquement au démarrage.

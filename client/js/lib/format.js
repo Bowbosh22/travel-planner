@@ -1,8 +1,22 @@
-const eur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
-const eurCents = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
+// Devise d'affichage : les montants restent enregistrés en euros ; seul l'affichage est converti (taux du jour, ou parité fixe pour le franc CFA).
+const NAMES = { EUR: 'euros', USD: 'dollars US', XAF: 'francs CFA', XOF: 'francs CFA' };
+let shown = { code: 'EUR', rate: 1 };
+const makeFmt = (code, cents) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+let fmtWhole = makeFmt('EUR', false);
+let fmtCents = makeFmt('EUR', true);
 
-export const formatEUR = (n) => eur.format(n);
-export const formatEURCents = (n) => eurCents.format(n);
+export function setDisplayCurrency(code = 'EUR', rate = 1) {
+  const ok = NAMES[code] && Number.isFinite(rate) && rate > 0;
+  shown = ok ? { code, rate } : { code: 'EUR', rate: 1 };
+  const noCents = shown.code === 'XAF' || shown.code === 'XOF'; // pas de centimes en franc CFA
+  fmtWhole = makeFmt(shown.code, false);
+  fmtCents = noCents ? fmtWhole : makeFmt(shown.code, true);
+}
+export const displayCurrency = () => shown.code;
+export const displayCurrencyName = () => NAMES[shown.code];
+
+export const formatEUR = (n) => fmtWhole.format(n * shown.rate);
+export const formatEURCents = (n) => fmtCents.format(n * shown.rate);
 export const formatPercent = (n) => `${Math.round(n)} %`;
 
 const toDate = (iso) => new Date(`${iso}T00:00:00`);
@@ -19,7 +33,7 @@ export function daysBetween(fromIso, toIso) {
 export const plural = (n, one, many) => (n > 1 ? many : one);
 
 // Montants entiers sans décimales, sinon avec centimes (650,50 €).
-export const formatMoney = (n) => (Number.isInteger(n) ? formatEUR(n) : formatEURCents(n));
+export const formatMoney = (n) => (shown.code === 'EUR' ? (Number.isInteger(n) ? formatEUR(n) : formatEURCents(n)) : formatEUR(n));
 
 // Montant dans une devise quelconque (« 100 000 FCFA », « 85,00 $US »...).
 export function formatCurrency(amount, code) {

@@ -17,6 +17,7 @@ import * as login from './pages/login.js';
 import { takeCapture } from './lib/capture.js';
 import { toast } from './components/toast.js';
 import { showRecoveryCodes } from './components/recovery-dialog.js';
+import { loadPrefs, resetPrefs, launchRoute } from './prefs.js';
 
 const view = document.getElementById('view');
 const sidebar = document.getElementById('sidebar');
@@ -34,6 +35,7 @@ let pendingCapture = takeCapture(); // données du favori « Importer », à pr�
 async function logout() {
   await api.logout().catch(() => {});
   user = null;
+  resetPrefs();
   location.hash = '#/';
   render();
 }
@@ -63,9 +65,10 @@ async function onAuthenticated(u, { joined = false } = {}) {
   u = account;
   user = u;
   setTheme(u.theme); // le thème du compte suit l'utilisateur d'un appareil à l'autre
+  await loadPrefs(u.prefs);
   if (joined) { pendingInvite = null; toast('Compte créé : vous avez rejoint le voyage !'); } // inscription via le lien
   else await joinPending();
-  location.hash = '#/';
+  location.hash = `#${launchRoute()}`; // page de lancement choisie dans Paramètres
   await render();
   if (recoveryCodes?.length) showRecoveryCodes(recoveryCodes); // compte tout juste créé : les codes ne s'affichent qu'une fois
 }
@@ -138,7 +141,12 @@ window.addEventListener('hashchange', () => { if (user || /^#\/invitation\//.tes
 
 try {
   user = await api.me();
-  if (user) setTheme(user.theme);
+  if (user) {
+    setTheme(user.theme);
+    await loadPrefs(user.prefs);
+    // ouverture du site sans page précise : on va à la page de lancement choisie
+    if (!location.hash || location.hash === '#/' || location.hash === '#') { const r = launchRoute(); if (r !== '/') history.replaceState(null, '', `${location.pathname}${location.search}#${r}`); }
+  }
 } catch {
   user = null;
 }

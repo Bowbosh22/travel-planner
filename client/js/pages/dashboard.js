@@ -1,5 +1,6 @@
 import { openDialog } from '../components/dialog.js';
 import { openShare } from '../components/share-dialog.js';
+import { createLayoutEditor } from '../components/dash-layout.js';
 import { api } from '../api.js';
 import { summarize, tripTiming, CATEGORIES } from '../services/budget.js';
 import { mountCharts } from '../components/budget-charts.js';
@@ -13,7 +14,7 @@ import { loadCountries, countryAt } from '../lib/countries.js';
 import { addBasemap } from '../lib/basemap.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
-import { formatEUR, formatMoney, formatPercent, formatRange, formatLongDate, daysBetween, plural } from '../lib/format.js';
+import { formatEUR, formatMoney, formatPercent, formatRange, formatLongDate, daysBetween, plural, displayCurrencyName } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 
 export const title = 'Dashboard';
@@ -118,6 +119,7 @@ export async function mount(el, { user }) {
         <select id="trip-select" class="select">
           ${trips.map((t) => html`<option value="${t.id}" ${t.id === trip.id ? raw('selected') : ''}>${t.name}</option>`)}
         </select>
+        <button type="button" class="btn btn-soft" data-action="customize" title="Déplacer, redimensionner ou masquer les widgets">${icon('sliders', 16)}<span class="btn-label">Personnaliser</span></button>
         <button type="button" class="btn btn-primary" data-action="import">${icon('plus', 16)}Importer depuis un lien</button>
         <a class="avatar" href="#/parametres" aria-label="Paramètres du compte" title="${user.firstName}">${String(user.firstName).slice(0, 1).toUpperCase()}</a>
       </div>
@@ -126,7 +128,7 @@ export async function mount(el, { user }) {
     ${budgetBanner(trip.id, summary)}
 
     <div class="dash-grid">
-      <section class="hero hero-big ${photos.length ? 'has-photo' : ''}" aria-label="Voyage affiché">
+      <section class="hero hero-big ${photos.length ? 'has-photo' : ''}" data-w="hero" aria-label="Voyage affiché">
         ${photos.map((p, i) => html`<div class="hero-photo ${i === startAt ? 'on' : ''}" style="background-image:url('${p.url}')"></div>`)}
         ${photos.length ? html`<div class="hero-shade"></div>` : ''}
         <span class="hero-tag">${icon('pin', 14)} ${trip.destination}${trip.country ? html`, ${trip.country}` : ''}</span>
@@ -145,16 +147,13 @@ export async function mount(el, { user }) {
         </div>
       </section>
 
-      <div class="dash-right">
-        <div class="mini-row">
-          <section class="card mini mini-weather" aria-label="Heure et météo à la destination">
+      <section class="card mini mini-weather" data-w="weather" aria-label="Heure et météo à la destination">
             <div class="mini-clock"><strong id="dest-time">--:--</strong><span class="muted small-line">Heure à ${trip.destination.split(',')[0]}</span></div>
             <div class="mini-temp" id="dest-weather"><span class="muted small-line">Météo…</span></div>
           </section>
-          <section class="card mini mini-people" id="people" aria-label="Voyageurs">${raw(peopleMarkup())}</section>
-        </div>
-        <section class="card" aria-label="Budget du voyage">
-          <h3 class="card-head">Budget du voyage <span class="muted small-line">en euros</span></h3>
+          <section class="card mini mini-people" id="people" data-w="people" aria-label="Voyageurs">${raw(peopleMarkup())}</section>
+        <section class="card" data-w="budget" aria-label="Budget du voyage">
+          <h3 class="card-head">Budget du voyage <span class="muted small-line">en ${displayCurrencyName()}</span></h3>
           <div class="budget-split">
             ${ring(summary)}
             <dl class="kv-list">
@@ -167,7 +166,7 @@ export async function mount(el, { user }) {
           </div>
         </section>
 
-        <section class="card map-mini" aria-label="Carte du voyage">
+        <section class="card map-mini" data-w="map" aria-label="Carte du voyage">
           <div class="card-head"><h3>Carte du voyage <button type="button" class="link-btn small-line" data-map-open>Agrandir</button></h3>
             <div class="seg" role="group" aria-label="Type de carte">
               <button type="button" data-map-view="route" aria-pressed="${view === 'route'}">Trajet aérien</button>
@@ -177,12 +176,8 @@ export async function mount(el, { user }) {
           <div id="dash-map" class="dash-map" role="img" aria-label="Carte du trajet et du pays de destination"></div>
           <p class="map-caption muted small-line" id="map-caption">Chargement de la carte…</p>
         </section>
-      </div>
-    </div>
-
-    <div class="dash-bottom">
       ${hasData ? html`
-        <section class="card" aria-label="Dépenses par catégorie">
+        <section class="card" data-w="categories" aria-label="Dépenses par catégorie">
           <h3 class="card-head">Par catégorie <span class="muted small-line">prévu</span></h3>
           <div class="donut-row">
             <div class="chart-box h-donut">
@@ -194,12 +189,12 @@ export async function mount(el, { user }) {
             </ul>
           </div>
         </section>` : html`
-        <section class="card empty" style="grid-column: span 1">
+        <section class="card empty" data-w="categories">
           <h3>Aucune dépense</h3><p>Ajoutez vos réservations : le budget se met à jour automatiquement.</p>
           <a class="btn btn-primary" href="#/reservations">Ajouter une réservation</a>
         </section>`}
 
-      <section class="card" aria-label="Prochaines réservations">
+      <section class="card" data-w="upcoming" aria-label="Prochaines réservations">
           <h3 class="card-head">Prochaines réservations <a class="small-link" href="#/reservations">Voir tout</a></h3>
           ${upcoming.length ? html`<ul class="mini-bookings">${upcoming.map((b) => html`
             <li>
@@ -212,15 +207,14 @@ export async function mount(el, { user }) {
       </section>
 
       ${hasData ? html`
-        <section class="card" aria-label="Prévu et payé">
+        <section class="card" data-w="paid" aria-label="Prévu et payé">
           <div class="card-head"><h3>Prévu et payé</h3>
             <div class="legend"><span><i class="dot" style="background:var(--s4)"></i>Prévu</span><span><i class="dot" style="background:var(--s1)"></i>Payé</span></div>
           </div>
           <div class="chart-box h-bars"><canvas id="chart-bars" role="img" aria-label="Comparaison du prévu et du payé par catégorie"></canvas></div>
         </section>` : ''}
-    </div>
 
-    <section class="card" aria-label="À surveiller" style="margin-top:20px">
+    <section class="card" data-w="alerts" aria-label="À surveiller">
       <h2>À surveiller</h2>
       <ul class="alerts">
         ${summary.alerts.length
@@ -228,6 +222,7 @@ export async function mount(el, { user }) {
           : html`<li class="alert alert-ok"><span class="dot"></span><span>Tout est en ordre pour ce voyage.</span></li>`}
       </ul>
     </section>
+    </div>
   `);
 
   const refreshPeople = () => { const box = el.querySelector('#people'); if (box) box.innerHTML = peopleMarkup(); };
@@ -251,7 +246,9 @@ export async function mount(el, { user }) {
   el.addEventListener('submit', onSubmit);
   el.addEventListener('keydown', onKey);
   let redraw = () => {};
+  const layoutEditor = createLayoutEditor(el, { onLayout: () => setTimeout(() => miniMap?.invalidateSize(), 60) }); // ordre, tailles et widgets masqués choisis par l'utilisateur
   const onClick = async (e) => {
+    if (layoutEditor.onClick(e)) return;
     if (e.target.closest('[data-people-share]')) {
       return openShare(trip, { user, onChange: (t) => { if (t) { trip.members = t.members; trip.inviteToken = t.inviteToken; members = t.members.filter((m) => m.id !== user.id).map((m) => m.firstName); refreshPeople(); } else { location.reload(); } } });
     }
@@ -397,6 +394,7 @@ export async function mount(el, { user }) {
     alive = false;
     clearInterval(slideshow);
     clearInterval(clock);
+    layoutEditor.destroy();
     el.removeEventListener('click', onClick);
     el.removeEventListener('submit', onSubmit);
     el.removeEventListener('keydown', onKey);
