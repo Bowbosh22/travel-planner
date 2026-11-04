@@ -2,7 +2,7 @@
 
 Application web pour organiser ses voyages et suivre son budget en euros.
 
-**État : étape 7 sur 8** — page Budget, simulateur et alerte de dépassement, devises converties en euros (taux figés), import intelligent par lien, comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
+**État : étape 8 sur 8 (terminé)** — page Budget, simulateur et alerte de dépassement, devises converties en euros (taux figés), import intelligent par lien, comptes (email + mot de passe, « se souvenir de moi »), voyages, réservations et paiements enregistrés dans PostgreSQL, dashboard branché sur vos vraies données, thèmes (bleu / gris / marron, clair / sombre).
 
 ## Lancer en local
 
@@ -47,6 +47,16 @@ Bouton « Importer depuis un lien » : l'adresse d'une page (hôtel, restaurant,
 - **Planning** : calendrier mensuel ou vue jour par jour avec les réservations datées et les paiements ; les réservations sans date sont listées à part.
 - **Carte** : Leaflet + OpenStreetMap (gratuit, sans compte). Le lieu de chaque réservation est converti en coordonnées par Nominatim (une requête par seconde maximum, résultat mémorisé : un lieu n'est cherché qu'une fois). Lieu introuvable = signalé, jamais deviné.
 
+## Sécurité
+
+- **Comptes** : mots de passe hachés (scrypt), sessions stockées sous forme d'empreinte, cookie `httpOnly` + `SameSite=Lax` (+ `Secure` en production), « se souvenir de moi » = 30 jours sinon session. Anti force brute par email+adresse et par adresse seule ; inscriptions limitées à 10 par heure et par adresse, fermables avec `ALLOW_REGISTRATION=false`.
+- **Requêtes** : protection CSRF (en-tête dédié + même origine), requêtes SQL toutes paramétrées, données filtrées par utilisateur sur chaque route (isolation testée), 300 écritures par minute et par utilisateur au maximum, envois de fichiers (30/min), recherches de lieux (70/min) et analyses de liens (10/min) limités.
+- **Navigateur** : CSP stricte sans script en ligne, `frame-ancestors 'none'`, API jamais mise en cache, capteurs (caméra, micro, position) désactivés, tout texte venant d'un site tiers affiché échappé.
+- **Fichiers** : type déterminé par le contenu, 5 Mo maximum, images servies avec `sandbox`, téléchargement avec `nosniff`.
+- **Import par lien** : anti-SSRF (voir plus haut). **Favori** : données revalidées à la réception.
+- **Maintenance** : sessions expirées purgées chaque heure, arrêt propre au redéploiement, `npm audit` sans vulnérabilité connue au moment de la livraison.
+- **Secrets** : uniquement dans les variables d'environnement de Render, jamais dans le code ni dans GitHub. Gardez le dépôt GitHub en privé.
+
 ## Favori d'import (Airbnb, Booking...)
 
 Paramètres → « Importer depuis mon navigateur » : on glisse un bouton dans la barre de favoris. Sur une annonce ouverte dans **votre** navigateur (dates choisies), un clic lit ce qui est affiché (nom, lieu, total avec devise, dates de l'adresse) et ouvre Travel Planner avec une réservation préremplie à vérifier. Les données passent dans la partie `#` de l'adresse (jamais envoyée à un serveur) et sont revalidées à la réception. Champ introuvable = champ vide ; un prix « par nuit » n'est jamais pris pour le total ; une devise ambiguë (« $ » seul) est à choisir.
@@ -56,6 +66,7 @@ Paramètres → « Importer depuis mon navigateur » : on glisse un bouton dans 
 ```
 server/index.js          Démarrage : migrations puis serveur
 server/app.js            Express : sécurité (helmet, CSRF), API, fichiers statiques
+server/ratelimit.js      Limiteur de débit
 server/auth.js           Inscription, connexion, sessions (cookie httpOnly), anti force brute
 server/routes/trips.js   Voyages, réservations, paiements (toujours filtrés par utilisateur)
 server/routes/import.js  Route d'import par lien

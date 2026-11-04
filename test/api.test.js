@@ -61,7 +61,7 @@ before(async () => {
   pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
+  server = createApp(pool, { isProd: false, geocoder: fakeGeocoder, limits: { registrationsPerHour: 10_000 }, fx: createFxService(pool, { fetchJson, now: () => new Date('2026-11-04T10:00:00Z') }) }).listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
@@ -483,4 +483,67 @@ test('carte : lieu géocodé une seule fois, introuvable mémorisé, service en 
   const intruder = client();
   await signup(intruder, 'intrus-carte@test.fr');
   assert.equal((await intruder.post(`/api/bookings/${ok.id}/geocode`)).status, 404);
+});
+
+// ---- Étape 8 : durcissement ----
+test('en-têtes de sécurité : pas de cache sur l\'API, CSP stricte, capteurs coupés', { skip }, async () => {
+  const res = await fetch(`${base}/api/auth/me`);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  assert.match(res.headers.get('permissions-policy'), /geolocation=\(\)/);
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(res.headers.get('x-powered-by'), null);
+  const page = await fetch(`${base}/`);
+  const csp = page.headers.get('content-security-policy');
+  assert.match(csp, /default-src 'self'/);
+  assert.match(csp, /script-src 'self'/);
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.doesNotMatch(csp, /script-src[^;]*unsafe/, 'aucun script en ligne autorisé');
+  assert.match(csp, /img-src 'self' data: https:\/\/tile\.openstreetmap\.org/);
+});
+
+test('limiteur : au-delà du maximum, 429 avec Retry-After ; les autres clés ne sont pas touchées', async () => {
+  const { rateLimit } = await import('../server/ratelimit.js');
+  let t = 0;
+  const mw = rateLimit({ max: 2, windowMs: 1000, key: (r) => r.k, now: () => t });
+  const run = (k) => { const out = { status: 200, headers: {} }; const res = { setHeader: (h, v) => { out.headers[h] = v; }, status: (s) => { out.status = s; return { json: () => out }; } }; return mw({ k }, res, () => {}) ?? out; };
+  assert.equal(run('a').status, 200);
+  assert.equal(run('a').status, 200);
+  const blocked = run('a');
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.headers['Retry-After'], '1');
+  assert.equal(run('b').status, 200);
+  t = 1500;
+  assert.equal(run('a').status, 200, 'la fenêtre a expiré');
+});
+
+test('inscriptions : limitées par adresse, et fermées si ALLOW_REGISTRATION=false', { skip }, async () => {
+  process.env.ALLOW_REGISTRATION = 'false';
+  try {
+    assert.equal((await signup(client(), 'ferme@test.fr')).status, 403);
+  } finally { delete process.env.ALLOW_REGISTRATION; }
+  // Limite par adresse : une seconde instance de l'application, réglée à 2 inscriptions par heure
+  const strict = createApp(pool, { isProd: false, limits: { registrationsPerHour: 2 } }).listen(0);
+  try {
+    const url = `http://127.0.0.1:${strict.address().port}/api/auth/register`;
+    const reg = (n) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-requested-with': 'tp' }, body: JSON.stringify({ firstName: 'X', email: `lim${n}@test.fr`, password: 'motdepasse-long' }) });
+    assert.equal((await reg(1)).status, 201);
+    assert.equal((await reg(2)).status, 201);
+    const third = await reg(3);
+    assert.equal(third.status, 429);
+    assert.ok(third.headers.get('retry-after'));
+  } finally { strict.close(); }
+});
+
+test('parcours complet : voyage, réservation en dollars, paiement, budget dépassé, suppression', { skip }, async () => {
+  const c = client();
+  await signup(c, 'parcours@test.fr');
+  const t = (await c.post('/api/trips', { ...trip, budgetEur: 1000 })).body.trip;
+  const b = (await c.post(`/api/trips/${t.id}/bookings`, { name: 'Hôtel', category: 'logement', status: 'reserve', amount: 1320, currency: 'USD' })).body.booking;
+  assert.equal(b.amountEur, 1200, '1 320 $ au taux figé de 1,10');
+  const paid = (await c.post(`/api/bookings/${b.id}/payments`, { amount: 660, date: '2026-11-01' })).body.booking;
+  assert.equal(paid.payments[0].amountEur, 600);
+  const list = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings;
+  assert.equal(list.reduce((s, x) => s + x.amountEur, 0), 1200, 'prévisionnel > budget de 1 000 € : le tableau de bord signalera le dépassement');
+  assert.equal((await c.del(`/api/trips/${t.id}`)).status, 200);
+  assert.equal((await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.length, 0);
 });

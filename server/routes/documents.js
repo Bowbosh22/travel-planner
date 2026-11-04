@@ -1,5 +1,6 @@
 import express from 'express';
 import { UUID } from '../validate.js';
+import { rateLimit } from '../ratelimit.js';
 import { MAX_FILE_BYTES, MAX_USER_BYTES, cleanFileName, createDocumentStore, sniffMime } from '../storage/documents.js';
 
 export function createDocumentRoutes(pool, store = createDocumentStore(pool)) {
@@ -18,7 +19,7 @@ export function createDocumentRoutes(pool, store = createDocumentStore(pool)) {
   });
 
   // Envoi : le contenu du fichier est le corps de la requête ; nom et réservation liée sont dans l'adresse.
-  router.post('/trips/:id/documents', express.raw({ type: () => true, limit: MAX_FILE_BYTES }), async (req, res, next) => {
+  router.post('/trips/:id/documents', rateLimit({ max: 30, windowMs: 60 * 1000, message: 'Trop d\'envois en peu de temps. Réessayez dans une minute.' }), express.raw({ type: () => true, limit: MAX_FILE_BYTES }), async (req, res, next) => {
     try {
       if (!(await ownsTrip(req.params.id, req.user.id))) return notFound(res);
       const data = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);

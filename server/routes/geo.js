@@ -1,11 +1,12 @@
 import express from 'express';
 import { UUID } from '../validate.js';
+import { rateLimit } from '../ratelimit.js';
 
 export function createGeoRoutes(pool, geocoder) {
   const router = express.Router();
 
   // Calcule les coordonnées du lieu d'une réservation (une seule fois par texte de lieu, résultat mémorisé).
-  router.post('/bookings/:id/geocode', async (req, res, next) => {
+  router.post('/bookings/:id/geocode', rateLimit({ max: 70, windowMs: 60 * 1000, message: 'Trop de recherches de lieux. Réessayez dans une minute.' }), async (req, res, next) => {
     try {
       if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Introuvable.' });
       const { rows } = await pool.query(

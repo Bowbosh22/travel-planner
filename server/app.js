@@ -10,11 +10,13 @@ import { createFxService } from './fx/rates.js';
 import { createDocumentRoutes } from './routes/documents.js';
 import { createGeoRoutes } from './routes/geo.js';
 import { createGeocoder } from './geo/nominatim.js';
+import { rateLimit } from './ratelimit.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // importOptions : réservé aux tests (autoriser un serveur local). Jamais piloté par une variable d'environnement.
-export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder() } = {}) {
+export function createApp(pool, { isProd = process.env.NODE_ENV === 'production', importOptions = {}, fx = createFxService(pool), geocoder = createGeocoder(), limits = {} } = {}) {
+  const maxRegistrations = limits.registrationsPerHour ?? 10; // réglable pour les tests uniquement
   const app = express();
   app.disable('x-powered-by');
   if (isProd) app.set('trust proxy', 1); // Railway : HTTPS terminé en amont
@@ -47,7 +49,14 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
     }
   });
 
+  // Les réponses de l'API contiennent des données personnelles : jamais mises en cache ; capteurs du navigateur désactivés.
+  app.use((_req, res, next) => {
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    next();
+  });
+
   const api = express.Router();
+  api.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   api.use(express.json({ limit: '100kb' }));
 
   // Protection CSRF : en plus du cookie SameSite=Lax, toute écriture doit venir du site lui-même
@@ -60,9 +69,13 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
     next();
   });
 
+  const writeLimit = rateLimit({ max: 300, windowMs: 60 * 1000 });
   const auth = createAuth(pool, { secureCookie: isProd });
   api.use(auth.loadUser);
+  api.use('/auth/register', rateLimit({ max: maxRegistrations, windowMs: 60 * 60 * 1000, key: (req) => req.ip, message: 'Trop d\'inscriptions depuis cette adresse. Réessayez plus tard.' }));
   api.use('/auth', auth.router);
+  // Filet de sécurité : au plus 300 écritures par minute et par utilisateur connecté.
+  api.use(auth.requireUser, (req, res, next) => (['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? next() : writeLimit(req, res, next)));
   api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder));
 
   api.use((_req, res) => res.status(404).json({ error: 'Introuvable.' }));

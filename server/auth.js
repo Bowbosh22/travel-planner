@@ -56,6 +56,7 @@ function createLimiter(max = 8, windowMs = 15 * 60 * 1000) {
 
 export function createAuth(pool, { secureCookie = false } = {}) {
   const limiter = createLimiter();
+  const ipLimiter = createLimiter(40); // filet : trop d'échecs depuis une même adresse, quels que soient les emails essayés
 
   async function startSession(res, userId, remember) {
     const token = crypto.randomBytes(32).toString('base64url');
@@ -114,12 +115,13 @@ export function createAuth(pool, { secureCookie = false } = {}) {
       const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
       const password = typeof req.body.password === 'string' ? req.body.password : '';
       const key = `${req.ip}|${email}`;
-      if (limiter.blocked(key)) return res.status(429).json({ error: 'Trop de tentatives. Réessayez dans quelques minutes.' });
+      if (limiter.blocked(key) || ipLimiter.blocked(req.ip)) return res.status(429).json({ error: 'Trop de tentatives. Réessayez dans quelques minutes.' });
       const { rows } = await pool.query('SELECT * FROM users WHERE lower(email) = $1', [email]);
       // On vérifie toujours un hash (même si le compte n'existe pas) : temps de réponse identique.
       const ok = await verifyPassword(password, rows[0]?.password_hash ?? 'scrypt$AAAA$AAAA');
       if (!rows[0] || !ok) {
         limiter.fail(key);
+        ipLimiter.fail(req.ip);
         return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
       }
       limiter.clear(key);
