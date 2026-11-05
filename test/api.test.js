@@ -325,7 +325,7 @@ test('devises : aperçu du taux et liste des devises', { skip }, async () => {
   const c = client();
   await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
   const list = (await c.get('/api/fx')).body.currencies;
-  assert.deepEqual(list.map((x) => x.code), ['EUR', 'USD', 'XAF', 'XOF']);
+  assert.deepEqual(list.map((x) => x.code), ['EUR', 'USD', 'XAF', 'XOF', 'MYR']);
   const r = (await c.get('/api/fx/xaf')).body;
   assert.equal(r.rate, 655.957);
   assert.equal((await c.get('/api/fx/XYZ')).status, 503);
@@ -843,4 +843,90 @@ test('préférences : effets visuels', { skip }, async () => {
   const c = client(); await signup(c, `fx-${Date.now()}@test.fr`);
   assert.equal((await c.put('/api/auth/prefs', { effects: 'ultra' })).status, 400);
   assert.equal((await c.put('/api/auth/prefs', { effects: 'light' })).body.prefs.effects, 'light');
+});
+
+test('étapes : CRUD, réservation rattachée, accès réservé', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+  const mk = (b) => c.post(`/api/trips/${t.id}/stops`, b);
+  assert.equal((await mk({ name: 'Penang', startDate: '2026-12-15', endDate: '2026-12-12' })).status, 400, 'fin avant début');
+  assert.equal((await mk({ name: '', startDate: '2026-12-12', endDate: '2026-12-13' })).status, 400);
+  const kl = (await mk({ name: 'Kuala Lumpur', startDate: '2026-12-12', endDate: '2026-12-14' })).body.stop;
+  const pg = (await mk({ name: 'Penang', startDate: '2026-12-10', endDate: '2026-12-12' })).body.stop;
+  const list = (await c.get(`/api/trips/${t.id}/stops`)).body.stops;
+  assert.deepEqual(list.map((s) => s.name), ['Penang', 'Kuala Lumpur'], 'triées par date');
+  assert.equal(list[0].geoDone, false);
+  const g = (await c.post(`/api/stops/${kl.id}/geocode`)).body.stop;
+  assert.equal(g.geoDone, true);
+  assert.ok(g.lat !== null);
+  const calls = geo.calls;
+  await c.post(`/api/stops/${kl.id}/geocode`);
+  assert.equal(geo.calls, calls, 'résultat mémorisé');
+  const renamed = (await c.put(`/api/stops/${kl.id}`, { name: 'Ipoh', startDate: '2026-12-12', endDate: '2026-12-14' })).body.stop;
+  assert.equal(renamed.geoDone, false, 'nouveau nom : position à recalculer');
+
+  const b = (await bookingIn(t.id, c, { amount: 50, stopId: kl.id })).body.booking;
+  assert.equal(b.stopId, kl.id);
+  assert.equal((await bookingIn(t.id, c, { amount: 50, stopId: '00000000-0000-4000-8000-000000000000' })).status, 400);
+  assert.equal((await c.put(`/api/bookings/${b.id}/stop`, { stopId: pg.id })).status, 200);
+  assert.equal((await c.put(`/api/bookings/${b.id}/stop`, { stopId: null })).status, 200);
+  assert.equal((await c.put(`/api/bookings/${b.id}/stop`, { stopId: 'nope' })).status, 400);
+
+  const intruder = client();
+  await signup(intruder, 'stops-intruder@test.fr');
+  assert.equal((await intruder.get(`/api/trips/${t.id}/stops`)).body.stops.length, 0);
+  assert.equal((await intruder.post(`/api/trips/${t.id}/stops`, { name: 'X', startDate: '2026-12-12', endDate: '2026-12-13' })).status, 404);
+  assert.equal((await intruder.put(`/api/stops/${kl.id}`, { name: 'X', startDate: '2026-12-12', endDate: '2026-12-13' })).status, 404);
+  assert.equal((await intruder.del(`/api/stops/${kl.id}`)).status, 404);
+
+  await c.put(`/api/bookings/${b.id}/stop`, { stopId: kl.id });
+  assert.equal((await c.del(`/api/stops/${kl.id}`)).status, 200);
+  const after = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.find((x) => x.id === b.id);
+  assert.equal(after.stopId, null, 'réservation conservée, détachée');
+});
+
+test('logements : comparateur trié par prix, retenir / annuler', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+  const stop = (await c.post(`/api/trips/${t.id}/stops`, { name: 'Langkawi', startDate: '2026-12-14', endDate: '2026-12-17' })).body.stop;
+  const add = (b) => c.post(`/api/stops/${stop.id}/stays`, b);
+  const cher = (await add({ name: 'Resort', url: 'https://exemple.com/a', amount: 300 })).body.stay;
+  const sans = (await add({ name: 'Sans prix', url: 'https://exemple.com/b' })).body.stay;
+  const usd = (await add({ name: 'Villa', amount: 110, currency: 'USD', rating: '8,5' })).body.stay;
+  const bon = (await add({ name: 'Auberge', amount: 40, notes: 'Près de la plage' })).body.stay;
+  assert.equal(usd.amountEur, 100);
+  assert.equal(usd.rating, 8.5);
+  assert.equal(sans.amountEur, null);
+  const order = (await c.get(`/api/trips/${t.id}/stays`)).body.stays.map((s) => s.name);
+  assert.deepEqual(order, ['Auberge', 'Villa', 'Resort', 'Sans prix'], 'prix croissant, sans prix à la fin');
+  assert.equal((await add({ name: 'X', url: 'javascript:alert(1)' })).status, 400);
+  assert.equal((await add({ name: 'X', rating: 11 })).status, 400);
+
+  const up = (await c.put(`/api/stays/${cher.id}`, { name: 'Resort', url: 'https://exemple.com/a', amount: 20 })).body.stay;
+  assert.equal(up.amountEur, 20);
+  assert.equal((await c.get(`/api/trips/${t.id}/stays`)).body.stays[0].name, 'Resort', 'retriés après modification');
+
+  const ch = (await c.post(`/api/stays/${bon.id}/choose`)).body;
+  assert.equal(ch.stay.chosen, true);
+  const bk = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.find((x) => x.id === ch.bookingId);
+  assert.equal(bk.category, 'logement');
+  assert.equal(bk.startsOn, '2026-12-14');
+  assert.equal(bk.endsOn, '2026-12-17');
+  assert.equal(bk.amountEur, 40);
+  assert.equal(bk.stopId, stop.id);
+  assert.equal((await c.post(`/api/stays/${usd.id}/choose`)).status, 409, 'un seul logement retenu par étape');
+  const un = (await c.post(`/api/stays/${bon.id}/unchoose`)).body.stay;
+  assert.equal(un.chosen, false);
+  assert.equal((await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.some((x) => x.id === ch.bookingId), false);
+
+  const intruder = client();
+  await signup(intruder, 'stays-intruder@test.fr');
+  assert.equal((await intruder.get(`/api/trips/${t.id}/stays`)).body.stays.length, 0);
+  assert.equal((await intruder.post(`/api/stops/${stop.id}/stays`, { name: 'X' })).status, 404);
+  assert.equal((await intruder.put(`/api/stays/${bon.id}`, { name: 'X' })).status, 404);
+  assert.equal((await intruder.post(`/api/stays/${bon.id}/choose`)).status, 404);
+  assert.equal((await intruder.del(`/api/stays/${bon.id}`)).status, 404);
+  assert.equal((await c.del(`/api/stays/${bon.id}`)).status, 200);
 });

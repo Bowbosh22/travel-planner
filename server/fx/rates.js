@@ -5,10 +5,10 @@
 
 export const FIXED_RATES = { XAF: 655.957, XOF: 655.957 }; // parité officielle : 1 € = 655,957 F CFA
 
-// Devises gérées volontairement limitées : euro, dollar américain et franc CFA (les deux zones).
+// Devises gérées volontairement limitées : euro, dollar américain, franc CFA (les deux zones) et ringgit malaisien.
 export const CURRENCIES = [
   ['EUR', 'Euro'], ['USD', 'Dollar américain'],
-  ['XAF', 'Franc CFA (Afrique centrale)'], ['XOF', 'Franc CFA (Afrique de l\'Ouest)'],
+  ['XAF', 'Franc CFA (Afrique centrale)'], ['XOF', 'Franc CFA (Afrique de l\'Ouest)'], ['MYR', 'Ringgit malaisien'],
 ].map(([code, label]) => ({ code, label }));
 const CODES = new Set(CURRENCIES.map((c) => c.code));
 export const isSupportedCurrency = (code) => typeof code === 'string' && CODES.has(code);

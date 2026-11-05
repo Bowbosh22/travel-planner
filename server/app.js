@@ -16,6 +16,7 @@ import { createPhotoFinder } from './images/photos.js';
 import { createWeather } from './weather/openmeteo.js';
 import { createWeatherRoutes } from './routes/weather.js';
 import { createInviteRoutes } from './routes/invites.js';
+import { createStopRoutes } from './routes/stops.js';
 import { rateLimit } from './ratelimit.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -87,7 +88,7 @@ export function createApp(pool, { isProd = process.env.NODE_ENV === 'production'
   api.use(createInviteRoutes(pool, auth.requireUser));
   // Filet de sécurité : au plus 300 écritures par minute et par utilisateur connecté.
   api.use(auth.requireUser, (req, res, next) => (['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? next() : writeLimit(req, res, next)));
-  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx, images), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder, suggest), createWeatherRoutes(pool, weather));
+  api.use(auth.requireUser, createImportRoutes(importOptions), createFxRoutes(fx), createTripRoutes(pool, fx, images), createDocumentRoutes(pool), createGeoRoutes(pool, geocoder, suggest), createWeatherRoutes(pool, weather), createStopRoutes(pool, fx, geocoder));
 
   api.use((_req, res) => res.status(404).json({ error: 'Introuvable.' }));
   // JSON invalide, etc. : jamais de trace technique envoyée au navigateur.

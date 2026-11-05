@@ -8,6 +8,7 @@ import * as trips from './pages/trips.js';
 import * as bookings from './pages/bookings.js';
 import * as budget from './pages/budget.js';
 import * as simulateur from './pages/simulateur.js';
+import * as etapes from './pages/etapes.js';
 import * as planning from './pages/planning.js';
 import * as carte from './pages/carte.js';
 import * as documents from './pages/documents.js';
@@ -25,7 +26,7 @@ const sidebar = document.getElementById('sidebar');
 const tabbar = document.getElementById('tabbar');
 const sheet = document.getElementById('sheet');
 
-const PAGES = { '/': dashboard, '/voyages': trips, '/reservations': bookings, '/budget': budget, '/simulateur': simulateur, '/planning': planning, '/carte': carte, '/documents': documents, '/parametres': settings };
+const PAGES = { '/': dashboard, '/voyages': trips, '/reservations': bookings, '/etapes': etapes, '/budget': budget, '/simulateur': simulateur, '/planning': planning, '/carte': carte, '/documents': documents, '/parametres': settings };
 let user = null;
 let destroyCurrent = () => {};
 let token = 0;

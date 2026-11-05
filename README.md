@@ -175,3 +175,7 @@ Dans la mini-carte « Voyage avec » de l'accueil, le bouton « + » permet d'aj
 - **Dashboard** : bouton « Personnaliser » : déplacer (← →), taille S / M / L / XL, masquer ou réafficher chaque widget ; « Disposition d'origine » pour tout remettre. Enregistré sur le compte.
 - Préférences stockées dans `users.prefs` (liste blanche côté serveur) ; appareils : `sessions.id / user_agent / last_seen_at`. Migration `012_prefs_sessions.sql` appliquée automatiquement au démarrage.
 - **Fluidité** : les lectures de l'API sont mises en cache 30 s côté navigateur (vidées à chaque écriture), les données du voyage affiché sont préchargées au survol d'un onglet, une barre de progression s'affiche pendant le chargement d'une page, et Paramètres → « Effets visuels : Légers » supprime le flou de verre dépoli.
+
+## Étapes d'un voyage (ex. plusieurs villes en Malaisie)
+
+Page **Étapes** : chaque étape a ses dates, son nombre de nuits, un décompte, son budget (réservations rattachées), sa carte et un **comparateur de logements trié par prix** (liens importés, prix par nuit, note, « Retenir » crée la réservation de logement). Une réservation se rattache à une étape depuis son formulaire. Migration `013_stops_stays.sql` appliquée automatiquement. Devise ajoutée : ringgit malaisien (MYR).

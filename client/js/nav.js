@@ -2,6 +2,7 @@ export const NAV = [
   { path: '/', label: 'Dashboard', icon: 'home', tab: true },
   { path: '/voyages', label: 'Mes voyages', icon: 'plane', tab: true },
   { path: '/reservations', label: 'Réservations', icon: 'bag' },
+  { path: '/etapes', label: 'Étapes', icon: 'compass' },
   { path: '/budget', label: 'Budget', icon: 'wallet', tab: true },
   { path: '/simulateur', label: 'Simulateur', icon: 'sliders' },
   { path: '/planning', label: 'Planning', icon: 'calendar' },

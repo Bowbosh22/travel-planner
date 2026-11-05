@@ -7,7 +7,7 @@ import { announceBudget, budgetBanner } from '../components/budget-alert.js';
 import { CATEGORIES, summarize } from '../services/budget.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
-import { formatMoney, formatLongDate, formatEUR, formatPercent, formatCurrency, formatRate } from '../lib/format.js';
+import { formatMoney, formatLongDate, formatShortDate, formatEUR, formatPercent, formatCurrency, formatRate } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 
 export const title = 'Réservations';
@@ -16,7 +16,7 @@ const STATUS = { reserve: 'Réservé', a_reserver: 'À réserver', annule: 'Annu
 const paidOrig = (b) => b.payments.reduce((s, p) => s + p.amount, 0); // dans la devise de la réservation
 const round2 = (n) => Math.round(n * 100) / 100;
 
-const bookingForm = (b = {}, currencies = []) => html`
+const bookingForm = (b = {}, currencies = [], stops = []) => html`
   <div class="form-grid">
     <div class="field span-2"><label for="b-name">Nom</label><input class="input" id="b-name" name="name" value="${b.name ?? ''}" placeholder="Vol aller-retour" maxlength="120" required></div>
     <div class="field"><label for="b-cat">Catégorie</label>
@@ -32,6 +32,10 @@ const bookingForm = (b = {}, currencies = []) => html`
     <div class="field span-2"><label for="b-loc">Lieu <span class="opt">(facultatif)</span></label><input class="input" id="b-loc" name="location" value="${b.location ?? ''}" maxlength="200"></div>
     <div class="field"><label for="b-start">Du</label><input class="input" id="b-start" name="startsOn" type="date" value="${b.startsOn ?? ''}"></div>
     <div class="field"><label for="b-end">Au</label><input class="input" id="b-end" name="endsOn" type="date" value="${b.endsOn ?? ''}"></div>
+    ${stops.length ? html`<div class="field span-2"><label for="b-stop">Étape <span class="opt">(facultatif)</span></label>
+      <select class="select full" id="b-stop" name="stopId"><option value="">Aucune</option>
+        ${stops.map((s) => html`<option value="${s.id}" ${b.stopId === s.id ? raw('selected') : ''}>${s.name} · ${formatShortDate(s.startDate)} – ${formatShortDate(s.endDate)}</option>`)}
+      </select></div>` : ''}
     <div class="field span-2"><label for="b-url">Lien <span class="opt">(facultatif)</span></label><input class="input" id="b-url" name="sourceUrl" type="url" value="${b.sourceUrl ?? ''}" maxlength="500" placeholder="https://..."></div>
   </div>`;
 
@@ -122,11 +126,11 @@ export async function mount(el) {
     render();
   };
 
-  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, ...amountPayload(v), location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl });
+  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, ...amountPayload(v), location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl, ...(v.stopId !== undefined ? { stopId: v.stopId || null } : {}) });
 
   const openBookingForm = async (existing) => openDialog({
     title: existing ? 'Modifier la réservation' : 'Nouvelle réservation',
-    content: bookingForm(existing, await loadCurrencies()),
+    content: bookingForm(existing, await loadCurrencies(), await api.listStops(trip.id).catch(() => [])),
     onMount: (dlg) => wireAmountField(dlg, { editing: existing ?? null }),
     submitLabel: existing ? 'Enregistrer' : 'Ajouter',
     onSubmit: async (v) => {

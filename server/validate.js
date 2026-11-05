@@ -86,6 +86,7 @@ export function validateBooking(body = {}) {
     sourceUrl: optional(body.sourceUrl, sourceUrl),
     startsOn: optional(body.startsOn, (v) => (isIsoDate(v) ? { value: v } : { error: 'La date de début est invalide.' })),
     endsOn: optional(body.endsOn, (v) => (isIsoDate(v) ? { value: v } : { error: 'La date de fin est invalide.' })),
+    stopId: optional(body.stopId, (v) => (typeof v === 'string' && UUID.test(v) ? { value: v } : { error: 'Étape invalide.' })),
   });
   if (r.error) return r;
   if (r.value.startsOn && r.value.endsOn && r.value.endsOn < r.value.startsOn) return { error: 'La date de fin ne peut pas être avant le début.' };
@@ -141,4 +142,40 @@ export function validateCompanions(body = {}) {
     if (!names.some((x) => x.toLowerCase() === n.toLowerCase())) names.push(n);
   }
   return { value: names };
+}
+
+export function validateStop(body = {}) {
+  const name = text(body.name, "Le nom de l'étape", { max: 120 });
+  if (name.error) return name;
+  if (!isIsoDate(body.startDate) || !isIsoDate(body.endDate)) return { error: "Les dates de l'étape sont obligatoires." };
+  if (body.endDate < body.startDate) return { error: "La fin de l'étape ne peut pas être avant le début." };
+  return { value: { name: name.value, startDate: body.startDate, endDate: body.endDate } };
+}
+
+// Logement à comparer : nom, lien, prix (devise + taux comme une réservation), note sur 10, remarques.
+export function validateStay(body = {}) {
+  const r = collect({
+    name: text(body.name, 'Le nom du logement', { max: 120 }),
+    url: optional(body.url, sourceUrl),
+    location: optional(body.location, (v) => text(v, 'Le lieu', { max: 200 })),
+    amount: money(body.amount, 'Le prix', { nullable: true, max: 100_000_000_000 }),
+    notes: optional(body.notes, (v) => text(v, 'Les remarques', { max: 500 })),
+  });
+  if (r.error) return r;
+  let rating = null;
+  if (body.rating !== undefined && body.rating !== null && String(body.rating).trim() !== '') {
+    const n = Number(String(body.rating).replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > 10) return { error: 'La note doit être comprise entre 0 et 10.' };
+    rating = Math.round(n * 10) / 10;
+  }
+  const currency = body.currency === undefined || body.currency === '' ? 'EUR' : body.currency;
+  if (!isSupportedCurrency(currency)) return { error: 'Devise non prise en charge.' };
+  let manualRate = null;
+  if (body.rate !== undefined && body.rate !== null && String(body.rate).trim() !== '') {
+    const n = Number(String(body.rate).replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0 || n > 1e7) return { error: 'Le taux de change doit être un nombre positif.' };
+    if (currency === 'EUR') return { error: 'Pas de taux de change pour un prix en euros.' };
+    manualRate = n;
+  }
+  return { value: { ...r.value, rating, currency, manualRate } };
 }
