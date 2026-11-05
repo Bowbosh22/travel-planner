@@ -32,7 +32,7 @@ const bookingForm = (b = {}, currencies = [], stops = []) => html`
     <div class="field span-2"><label for="b-loc">Lieu <span class="opt">(facultatif)</span></label><input class="input" id="b-loc" name="location" value="${b.location ?? ''}" maxlength="200"></div>
     <div class="field"><label for="b-start">Du</label><input class="input" id="b-start" name="startsOn" type="date" value="${b.startsOn ?? ''}"></div>
     <div class="field"><label for="b-end">Au</label><input class="input" id="b-end" name="endsOn" type="date" value="${b.endsOn ?? ''}"></div>
-    ${stops.length ? html`<div class="field span-2"><label for="b-stop">Étape <span class="opt">(facultatif)</span></label>
+    ${stops.length ? html`<div class="field span-2"><label for="b-stop">Destination <span class="opt">(facultatif)</span></label>
       <select class="select full" id="b-stop" name="stopId"><option value="">Aucune</option>
         ${stops.map((s) => html`<option value="${s.id}" ${b.stopId === s.id ? raw('selected') : ''}>${s.name} · ${formatShortDate(s.startDate)} – ${formatShortDate(s.endDate)}</option>`)}
       </select></div>` : ''}

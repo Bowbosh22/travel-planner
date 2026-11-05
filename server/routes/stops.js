@@ -66,7 +66,7 @@ export function createStopRoutes(pool, fx, geocoder) {
       if (p.error) return bad(res, p.error);
       if (!(await tripAccess(req.params.id, req.user.id))) return notFound(res);
       const count = (await pool.query('SELECT count(*)::int AS n FROM trip_stops WHERE trip_id=$1', [req.params.id])).rows[0].n;
-      if (count >= 30) return bad(res, 'Un voyage peut avoir 30 étapes au maximum.');
+      if (count >= 30) return bad(res, 'Un voyage peut avoir 30 destinations au maximum.');
       const { rows } = await pool.query('INSERT INTO trip_stops (trip_id, name, start_date, end_date) VALUES ($1,$2,$3,$4) RETURNING id', [req.params.id, p.value.name, p.value.startDate, p.value.endDate]);
       res.status(201).json({ stop: stopOut(await loadStop(rows[0].id, req.user.id)) });
     } catch (err) { next(err); }
@@ -90,7 +90,7 @@ export function createStopRoutes(pool, fx, geocoder) {
     } catch (err) { next(err); }
   });
 
-  // Position de l'étape sur la carte (une fois par nom, résultat mémorisé).
+  // Position de la destination sur la carte (une fois par nom, résultat mémorisé).
   router.post('/stops/:id/geocode', rateLimit({ max: 40, windowMs: 60 * 1000, message: 'Trop de recherches. Réessayez dans une minute.' }), async (req, res, next) => {
     try {
       const s = await loadStop(req.params.id, req.user.id);
@@ -111,7 +111,7 @@ export function createStopRoutes(pool, fx, geocoder) {
       const stopId = req.body?.stopId ?? null;
       const { rows } = await pool.query(`SELECT b.trip_id FROM bookings b JOIN trips t ON t.id=b.trip_id WHERE b.id=$1 AND ${canAccess('t', '$2')}`, [req.params.id, req.user.id]);
       if (!rows[0]) return notFound(res);
-      if (stopId !== null && (!validId(stopId) || !(await pool.query('SELECT 1 FROM trip_stops WHERE id=$1 AND trip_id=$2', [stopId, rows[0].trip_id])).rowCount)) return bad(res, 'Étape introuvable pour ce voyage.');
+      if (stopId !== null && (!validId(stopId) || !(await pool.query('SELECT 1 FROM trip_stops WHERE id=$1 AND trip_id=$2', [stopId, rows[0].trip_id])).rowCount)) return bad(res, 'Destination introuvable pour ce voyage.');
       await pool.query('UPDATE bookings SET stop_id=$2 WHERE id=$1', [req.params.id, stopId]);
       res.json({ ok: true });
     } catch (err) { next(err); }
@@ -133,7 +133,7 @@ export function createStopRoutes(pool, fx, geocoder) {
       const stop = await loadStop(req.params.id, req.user.id);
       if (!stop) return notFound(res);
       const count = (await pool.query('SELECT count(*)::int AS n FROM stay_options WHERE stop_id=$1', [stop.id])).rows[0].n;
-      if (count >= 30) return bad(res, 'Une étape peut comparer 30 logements au maximum.');
+      if (count >= 30) return bad(res, 'Une destination peut comparer 30 logements au maximum.');
       const v = p.value;
       if (v.amount === null) { v.currency = 'EUR'; v.manualRate = null; }
       const r = await resolveRate(v);
@@ -182,14 +182,14 @@ export function createStopRoutes(pool, fx, geocoder) {
     } catch (err) { next(err); }
   });
 
-  // « Retenir » : crée la réservation de logement de l'étape (dates de l'étape, prix et taux du logement).
+  // « Retenir » : crée la réservation de logement de la destination (dates de la destination, prix et taux du logement).
   router.post('/stays/:id/choose', async (req, res, next) => {
     try {
       const o = await loadStay(req.params.id, req.user.id);
       if (!o) return notFound(res);
       if (o.booking_id) return res.json({ stay: await stayById(o.id), bookingId: o.booking_id });
       const other = await pool.query('SELECT 1 FROM stay_options WHERE stop_id=$1 AND booking_id IS NOT NULL', [o.stop_id]);
-      if (other.rowCount) return res.status(409).json({ error: 'Un autre logement est déjà retenu pour cette étape. Retirez-le d\'abord.' });
+      if (other.rowCount) return res.status(409).json({ error: 'Un autre logement est déjà retenu pour cette destination. Retirez-le d\'abord.' });
       const { rows: [stop] } = await pool.query('SELECT * FROM trip_stops WHERE id=$1', [o.stop_id]);
       const { rows: [b] } = await pool.query(
         `INSERT INTO bookings (trip_id, category, name, amount_eur, status, source_url, starts_on, ends_on, location, currency, original_amount, fx_rate, fx_date, fx_source, stop_id)

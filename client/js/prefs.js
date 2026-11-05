@@ -4,10 +4,10 @@ import { api } from './api.js';
 import { setDisplayCurrency } from './lib/format.js';
 
 export const HOME_ROUTES = { dashboard: '/', voyages: '/voyages', carte: '/carte' };
-export const WIDGET_IDS = ['hero', 'weather', 'people', 'budget', 'map', 'categories', 'upcoming', 'paid', 'alerts'];
-export const WIDGET_LABELS = { hero: 'Voyage (photo)', weather: 'Heure et météo', people: 'Voyageurs', budget: 'Budget', map: 'Carte du voyage', categories: 'Par catégorie', upcoming: 'Prochaines réservations', paid: 'Prévu et payé', alerts: 'À surveiller' };
+export const WIDGET_IDS = ['hero', 'weather', 'people', 'budget', 'map', 'stops', 'categories', 'upcoming', 'paid', 'alerts'];
+export const WIDGET_LABELS = { hero: 'Voyage (photo)', weather: 'Heure et météo', people: 'Voyageurs', budget: 'Budget', map: 'Carte du voyage', categories: 'Par catégorie', upcoming: 'Prochaines réservations', paid: 'Prévu et payé', alerts: 'À surveiller', stops: 'Mini destinations' };
 // Disposition d'origine : voyage à gauche (large) ; heure, voyageurs, budget et carte à droite ; trois cartes dessous ; alertes en bas.
-export const DEFAULT_LAYOUT = { order: [...WIDGET_IDS], hidden: [], sizes: { hero: 'L', weather: 'S', people: 'S', budget: 'S', map: 'S', categories: 'S', upcoming: 'S', paid: 'S', alerts: 'F' } };
+export const DEFAULT_LAYOUT = { order: [...WIDGET_IDS], hidden: [], sizes: { hero: 'L', weather: 'S', people: 'S', budget: 'S', map: 'S', categories: 'S', upcoming: 'S', paid: 'S', alerts: 'F', stops: 'F' } };
 
 let prefs = {};
 

@@ -3,7 +3,7 @@ export const DISPLAY_CURRENCIES = ['EUR', 'USD', 'XAF', 'XOF'];
 export const HOMES = ['dashboard', 'voyages', 'carte'];
 export const TEXT_SIZES = ['small', 'normal', 'large'];
 export const EFFECTS = ['full', 'light'];
-export const WIDGETS = ['hero', 'weather', 'people', 'budget', 'map', 'categories', 'upcoming', 'paid', 'alerts'];
+export const WIDGETS = ['hero', 'weather', 'people', 'budget', 'map', 'categories', 'upcoming', 'paid', 'alerts', 'stops'];
 export const WIDGET_SIZES = ['S', 'M', 'L', 'F'];
 
 const uniqueWidgets = (v) => (Array.isArray(v) ? [...new Set(v.filter((id) => WIDGETS.includes(id)))] : null);

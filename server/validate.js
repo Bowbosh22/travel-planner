@@ -86,7 +86,7 @@ export function validateBooking(body = {}) {
     sourceUrl: optional(body.sourceUrl, sourceUrl),
     startsOn: optional(body.startsOn, (v) => (isIsoDate(v) ? { value: v } : { error: 'La date de début est invalide.' })),
     endsOn: optional(body.endsOn, (v) => (isIsoDate(v) ? { value: v } : { error: 'La date de fin est invalide.' })),
-    stopId: optional(body.stopId, (v) => (typeof v === 'string' && UUID.test(v) ? { value: v } : { error: 'Étape invalide.' })),
+    stopId: optional(body.stopId, (v) => (typeof v === 'string' && UUID.test(v) ? { value: v } : { error: 'Destination invalide.' })),
   });
   if (r.error) return r;
   if (r.value.startsOn && r.value.endsOn && r.value.endsOn < r.value.startsOn) return { error: 'La date de fin ne peut pas être avant le début.' };
@@ -145,10 +145,10 @@ export function validateCompanions(body = {}) {
 }
 
 export function validateStop(body = {}) {
-  const name = text(body.name, "Le nom de l'étape", { max: 120 });
+  const name = text(body.name, "Le nom de la destination", { max: 120 });
   if (name.error) return name;
-  if (!isIsoDate(body.startDate) || !isIsoDate(body.endDate)) return { error: "Les dates de l'étape sont obligatoires." };
-  if (body.endDate < body.startDate) return { error: "La fin de l'étape ne peut pas être avant le début." };
+  if (!isIsoDate(body.startDate) || !isIsoDate(body.endDate)) return { error: "Les dates de la destination sont obligatoires." };
+  if (body.endDate < body.startDate) return { error: "La fin de la destination ne peut pas être avant le début." };
   return { value: { name: name.value, startDate: body.startDate, endDate: body.endDate } };
 }
 

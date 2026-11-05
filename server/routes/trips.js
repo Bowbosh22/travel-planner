@@ -267,7 +267,7 @@ export function createTripRoutes(pool, fx, images) {
       const owned = await pool.query(`SELECT 1 FROM trips t WHERE t.id=$1 AND ${canAccess('t', '$2')}`, [req.params.id, req.user.id]);
       if (!owned.rowCount) return notFound(res);
       const v = p.value;
-      if (v.stopId && !(await pool.query('SELECT 1 FROM trip_stops WHERE id=$1 AND trip_id=$2', [v.stopId, req.params.id])).rowCount) return bad(res, 'Étape introuvable pour ce voyage.');
+      if (v.stopId && !(await pool.query('SELECT 1 FROM trip_stops WHERE id=$1 AND trip_id=$2', [v.stopId, req.params.id])).rowCount) return bad(res, 'Destination introuvable pour ce voyage.');
       const r = await resolveRate(v);
       const amountEur = v.amount === null ? null : toEur(v.amount, r.rate);
       if (amountEur !== null && amountEur > 9_999_999_999) return bad(res, 'Le montant converti est trop élevé.');
@@ -309,7 +309,7 @@ export function createTripRoutes(pool, fx, images) {
       if (startsOn && endsOn && endsOn < startsOn) return bad(res, 'La date de fin ne peut pas être avant le début.');
 
       const stopId = pick('stopId');
-      if (stopId && stopId !== current.stopId && !(await pool.query('SELECT 1 FROM trip_stops WHERE id=$1 AND trip_id=$2', [stopId, current.tripId])).rowCount) return bad(res, 'Étape introuvable pour ce voyage.');
+      if (stopId && stopId !== current.stopId && !(await pool.query('SELECT 1 FROM trip_stops WHERE id=$1 AND trip_id=$2', [stopId, current.tripId])).rowCount) return bad(res, 'Destination introuvable pour ce voyage.');
 
       await withTx(async (client) => {
         await client.query(

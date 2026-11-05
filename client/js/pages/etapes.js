@@ -1,4 +1,4 @@
-// Étapes d'un voyage (ex. plusieurs villes en Malaisie) : un mini tableau de bord par étape
+// Étapes d'un voyage (ex. plusieurs villes en Malaisie) : un mini tableau de bord par destination
 // (dates, nuits, décompte, budget, carte) et un comparateur de logements trié par prix.
 import { api } from '../api.js';
 import { openDialog, confirmDialog } from '../components/dialog.js';
@@ -12,7 +12,7 @@ import { formatMoney, formatRange, formatShortDate, formatLongDate, formatCurren
 import { getActiveTripId, setActiveTripId } from '../store.js';
 import { loadLeaflet } from './carte.js';
 
-export const title = 'Étapes';
+export const title = 'Mini destinations';
 
 const MAX_LINKS = 8;
 const MY_CURRENCIES = new Set(['EUR', 'USD', 'XAF', 'XOF', 'MYR']);
@@ -36,6 +36,32 @@ const stopBudget = (bookings, stopId) => {
 // Prix croissant, sans prix à la fin (le serveur trie déjà ainsi ; on garde cet ordre après chaque modification locale).
 const byPrice = (a, b) => (a.amountEur ?? Infinity) - (b.amountEur ?? Infinity);
 
+// Carte-tableau de bord d'une destination (aussi utilisée sur l'accueil).
+export function stopCardHtml(s, bookings, stays, today) {
+  const t = timing(s, today);
+  const n = nightsOf(s);
+  const bud = stopBudget(bookings, s.id);
+  const list = stays.filter((x) => x.stopId === s.id).sort(byPrice);
+  const chosen = list.find((x) => x.chosen);
+  const priced = list.filter((x) => x.amountEur !== null);
+  let lodging;
+  if (chosen) lodging = html`<strong>${chosen.name}</strong><span class="muted">Logement retenu${chosen.amountEur !== null ? ` · ${formatMoney(chosen.amountEur)}` : ''}</span>`;
+  else if (list.length) lodging = html`<strong>${list.length} ${plural(list.length, 'logement', 'logements')} à comparer</strong><span class="muted">${priced.length ? `dès ${formatMoney(priced[0].amountEur)}` : 'prix à renseigner'}</span>`;
+  else lodging = html`<strong>Aucun logement</strong><span class="muted">Ajoutez des liens à comparer</span>`;
+  return html`
+    <article class="card stop-card">
+      <button type="button" class="stop-card-main" data-open="${s.id}" aria-label="Ouvrir la destination ${s.name}">
+        <div class="stop-card-top"><h2>${s.name}</h2><span class="badge badge-stop-${t.kind}">${t.label}</span></div>
+        <p class="muted">${formatRange(s.startDate, s.endDate)} · ${n} ${plural(n, 'nuit', 'nuits')}</p>
+        <div class="stop-mini">
+          <div><span class="metric-label">Budget</span><strong>${formatMoney(bud.total)}</strong><span class="muted">${bud.items.length} ${plural(bud.items.length, 'réservation', 'réservations')}</span></div>
+          <div><span class="metric-label">Logement</span>${lodging}</div>
+        </div>
+      </button>
+    </article>`;
+}
+
+
 const stopForm = (s = {}) => html`
   <div class="form-grid">
     <div class="field span-2"><label for="s-name">Ville ou lieu</label><input class="input" id="s-name" name="name" value="${s.name ?? ''}" maxlength="120" placeholder="Penang" required></div>
@@ -48,7 +74,7 @@ const stayForm = (st = {}, currencies = []) => html`
     <div class="field span-2"><label for="y-name">Nom du logement</label><input class="input" id="y-name" name="name" value="${st.name ?? ''}" maxlength="120" required></div>
     <div class="field span-2"><label for="y-url">Lien <span class="opt">(facultatif)</span></label><input class="input" id="y-url" name="url" type="url" value="${st.url ?? ''}" maxlength="500" placeholder="https://..."></div>
     ${amountFieldHtml(currencies, { amount: st.amount, currency: st.currency ?? 'EUR', editing: st.id ? st : null })}
-    <p class="hint span-2">Indiquez le prix total du séjour pour les dates de l'étape : le tableau calcule le prix par nuit.</p>
+    <p class="hint span-2">Indiquez le prix total du séjour pour les dates de la destination : le tableau calcule le prix par nuit.</p>
     <div class="field"><label for="y-rating">Note /10 <span class="opt">(facultatif)</span></label><input class="input" id="y-rating" name="rating" inputmode="decimal" value="${st.rating ?? ''}" placeholder="8,5"></div>
     <div class="field"><label for="y-loc">Quartier <span class="opt">(facultatif)</span></label><input class="input" id="y-loc" name="location" value="${st.location ?? ''}" maxlength="200"></div>
     <div class="field span-2"><label for="y-notes">Remarques <span class="opt">(facultatif)</span></label><input class="input" id="y-notes" name="notes" value="${st.notes ?? ''}" maxlength="500" placeholder="Petit-déjeuner inclus, annulation gratuite…"></div>
@@ -61,15 +87,16 @@ export async function mount(el) {
   let stops = [];
   let stays = [];
   let bookings = [];
-  let openId = null; // étape affichée en détail
+  let openId = null; // destination affichée en détail
+  try { openId = sessionStorage.getItem('tp-open-stop'); sessionStorage.removeItem('tp-open-stop'); } catch { /* sans stockage : vue d'ensemble */ }
   let map = null;
   let alive = true;
   let drawSeq = 0;
 
   if (!trip) {
     el.innerHTML = String(html`
-      <header class="page-head"><div><h1>Étapes</h1></div></header>
-      <section class="card empty"><h2>Aucun voyage</h2><p>Créez d'abord un voyage pour y ajouter des étapes.</p>
+      <header class="page-head"><div><h1>Mini destinations</h1></div></header>
+      <section class="card empty"><h2>Aucun voyage</h2><p>Créez d'abord un voyage pour y ajouter des destinations.</p>
         <a class="btn btn-primary" href="#/voyages">Créer un voyage</a></section>`);
     return () => {};
   }
@@ -78,12 +105,12 @@ export async function mount(el) {
 
   const staysOf = (id) => stays.filter((x) => x.stopId === id).sort(byPrice);
 
-  // ---------- Carte (étapes ou détail d'une étape) ----------
+  // ---------- Carte (étapes ou détail d'une destination) ----------
   async function drawMap(points) {
     const seq = ++drawSeq;
     const box = el.querySelector('#stop-map');
     if (!box) return;
-    if (!points.length) { box.innerHTML = '<div class="empty-map"><p class="muted">Les étapes apparaîtront ici une fois localisées.</p></div>'; return; }
+    if (!points.length) { box.innerHTML = '<div class="empty-map"><p class="muted">Les destinations apparaîtront ici une fois localisées.</p></div>'; return; }
     try {
       const L = await loadLeaflet();
       if (!alive || seq !== drawSeq || !box.isConnected) return;
@@ -102,7 +129,7 @@ export async function mount(el) {
     } catch { /* carte indisponible : le reste de la page fonctionne */ }
   }
 
-  // Localise les étapes pas encore trouvées (une par une : le serveur espace les appels).
+  // Localise les destinations pas encore trouvées (une par une : le serveur espace les appels).
   async function locateStops(list) {
     for (const s of list.filter((x) => !x.geoDone)) {
       if (!alive) return;
@@ -115,47 +142,25 @@ export async function mount(el) {
 
   const overviewPoints = () => stops.filter((s) => s.lat !== null).map((s) => ({ lat: s.lat, lng: s.lng, label: s.name, sub: formatRange(s.startDate, s.endDate), route: true }));
 
-  // ---------- Vue d'ensemble : une carte-tableau de bord par étape ----------
-  function stopCard(s) {
-    const t = timing(s, today);
-    const n = nightsOf(s);
-    const bud = stopBudget(bookings, s.id);
-    const list = staysOf(s.id);
-    const chosen = list.find((x) => x.chosen);
-    const priced = list.filter((x) => x.amountEur !== null);
-    let lodging;
-    if (chosen) lodging = html`<strong>${chosen.name}</strong><span class="muted">Logement retenu${chosen.amountEur !== null ? ` · ${formatMoney(chosen.amountEur)}` : ''}</span>`;
-    else if (list.length) lodging = html`<strong>${list.length} ${plural(list.length, 'logement', 'logements')} à comparer</strong><span class="muted">${priced.length ? `dès ${formatMoney(priced[0].amountEur)}` : 'prix à renseigner'}</span>`;
-    else lodging = html`<strong>Aucun logement</strong><span class="muted">Ajoutez des liens à comparer</span>`;
-    return html`
-      <article class="card stop-card">
-        <button type="button" class="stop-card-main" data-open="${s.id}" aria-label="Ouvrir l'étape ${s.name}">
-          <div class="stop-card-top"><h2>${s.name}</h2><span class="badge badge-stop-${t.kind}">${t.label}</span></div>
-          <p class="muted">${formatRange(s.startDate, s.endDate)} · ${n} ${plural(n, 'nuit', 'nuits')}</p>
-          <div class="stop-mini">
-            <div><span class="metric-label">Budget</span><strong>${formatMoney(bud.total)}</strong><span class="muted">${bud.items.length} ${plural(bud.items.length, 'réservation', 'réservations')}</span></div>
-            <div><span class="metric-label">Logement</span>${lodging}</div>
-          </div>
-        </button>
-      </article>`;
-  }
+  // ---------- Vue d'ensemble : une carte-tableau de bord par destination ----------
+  const stopCard = (s) => stopCardHtml(s, bookings, stays, today);
 
   function renderOverview() {
     const total = stops.reduce((n, s) => n + stopBudget(bookings, s.id).total, 0);
     const nights = stops.reduce((n, s) => n + nightsOf(s), 0);
     el.innerHTML = String(html`
       <header class="page-head">
-        <div><h1>Étapes</h1><p>${stops.length ? `${stops.length} ${plural(stops.length, 'étape', 'étapes')} · ${nights} ${plural(nights, 'nuit', 'nuits')} · ${formatMoney(total)} de réservations rattachées` : 'Découpez le voyage en villes, chacune avec son budget et ses logements.'}</p></div>
+        <div><h1>Mini destinations</h1><p>${stops.length ? `${stops.length} ${plural(stops.length, 'destination', 'destinations')} · ${nights} ${plural(nights, 'nuit', 'nuits')} · ${formatMoney(total)} de réservations rattachées` : 'Découpez le voyage en villes, chacune avec son budget et ses logements.'}</p></div>
         <div class="page-actions">
           <label class="sr-only" for="trip-select">Voyage</label>
           <select id="trip-select" class="select">${trips.map((t) => html`<option value="${t.id}" ${t.id === trip.id ? raw('selected') : ''}>${t.name}</option>`)}</select>
-          <button type="button" class="btn btn-primary" data-act="new-stop">${icon('plus', 16)}Ajouter une étape</button>
+          <button type="button" class="btn btn-primary" data-act="new-stop">${icon('plus', 16)}Ajouter une destination</button>
         </div>
       </header>
       ${stops.length === 0 ? html`
-        <section class="card empty"><h2>Aucune étape</h2><p>Ex. pour la Malaisie : Kuala Lumpur, Penang, Langkawi… Chaque étape a ses dates, son budget, sa carte et son comparateur de logements.</p>
-          <button type="button" class="btn btn-primary" data-act="new-stop">${icon('plus', 16)}Ajouter la première étape</button></section>` : html`
-        <section class="card stops-map-card" aria-label="Carte des étapes"><div id="stop-map" class="stop-map"></div></section>
+        <section class="card empty"><h2>Aucune destination</h2><p>Ex. pour la Malaisie : Kuala Lumpur, Penang, Langkawi… Chaque destination a ses dates, son budget, sa carte et son comparateur de logements.</p>
+          <button type="button" class="btn btn-primary" data-act="new-stop">${icon('plus', 16)}Ajouter la première destination</button></section>` : html`
+        <section class="card stops-map-card" aria-label="Carte des destinations"><div id="stop-map" class="stop-map"></div></section>
         <div class="stop-grid">${stops.map(stopCard)}</div>`}`);
     killMap();
     if (stops.length) {
@@ -165,7 +170,7 @@ export async function mount(el) {
     }
   }
 
-  // ---------- Détail d'une étape ----------
+  // ---------- Détail d'une destination ----------
   function renderDetail() {
     const s = stops.find((x) => x.id === openId);
     if (!s) { openId = null; return renderOverview(); }
@@ -199,21 +204,21 @@ export async function mount(el) {
     };
     el.innerHTML = String(html`
       <header class="page-head">
-        <div><button type="button" class="btn btn-ghost btn-sm back-btn" data-act="back">← Toutes les étapes</button>
+        <div><button type="button" class="btn btn-ghost btn-sm back-btn" data-act="back">← Toutes les destinations</button>
           <h1>${s.name}</h1><p>${formatRange(s.startDate, s.endDate)}</p></div>
         <div class="page-actions">
           <button type="button" class="btn btn-soft" data-act="edit-stop">Modifier</button>
           <button type="button" class="btn btn-ghost danger-text" data-act="del-stop">Supprimer</button>
         </div>
       </header>
-      <section class="card summary-strip stop-kpis" aria-label="Résumé de l'étape">
+      <section class="card summary-strip stop-kpis" aria-label="Résumé de la destination">
         <div><div class="metric-label">Dates</div><strong>${formatShortDate(s.startDate)} → ${formatShortDate(s.endDate)}</strong></div>
         <div><div class="metric-label">Durée</div><strong>${n} ${plural(n, 'nuit', 'nuits')}</strong></div>
         <div><div class="metric-label">Décompte</div><strong>${t.label}</strong></div>
-        <div><div class="metric-label">Budget de l'étape</div><strong>${formatMoney(bud.total)}</strong></div>
+        <div><div class="metric-label">Budget de la destination</div><strong>${formatMoney(bud.total)}</strong></div>
       </section>
-      <section class="card stop-budget" aria-label="Budget de l'étape">
-        <h2 class="section-title in-card">Budget de l'étape</h2>
+      <section class="card stop-budget" aria-label="Budget de la destination">
+        <h2 class="section-title in-card">Budget de la destination</h2>
         ${(() => {
           const sm = summarize(trip, bud.items);
           const share = trip.budgetEur > 0 ? Math.round((sm.forecast / trip.budgetEur) * 100) : 0;
@@ -231,10 +236,10 @@ export async function mount(el) {
       </section>
       <div class="stop-detail-grid">
         <section class="card"><h2 class="section-title in-card">Carte</h2><div id="stop-map" class="stop-map stop-map-sm"></div></section>
-        <section class="card"><h2 class="section-title in-card">Réservations de l'étape</h2>
+        <section class="card"><h2 class="section-title in-card">Réservations de la destination</h2>
           ${bud.items.length ? html`<ul class="stop-bookings">${bud.items.map((b) => html`<li><span>${b.name}</span><strong>${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</strong>
-              <button type="button" class="btn btn-ghost btn-sm" data-detach="${b.id}" aria-label="Détacher ${b.name} de l'étape">Détacher</button></li>`)}</ul>`
-            : html`<p class="muted">Aucune réservation rattachée. Choisissez l'étape dans le formulaire d'une réservation, ou rattachez-en une ci-dessous.</p>`}
+              <button type="button" class="btn btn-ghost btn-sm" data-detach="${b.id}" aria-label="Détacher ${b.name} de la destination">Détacher</button></li>`)}</ul>`
+            : html`<p class="muted">Aucune réservation rattachée. Choisissez la destination dans le formulaire d'une réservation, ou rattachez-en une ci-dessous.</p>`}
           ${bookings.filter((b) => !b.stopId && b.status !== 'annule').length ? html`
             <div class="attach-row"><label class="sr-only" for="attach-sel">Rattacher une réservation</label>
               <select id="attach-sel" class="select">${bookings.filter((b) => !b.stopId && b.status !== 'annule').map((b) => html`<option value="${b.id}">${b.name}</option>`)}</select>
@@ -274,14 +279,14 @@ export async function mount(el) {
     const last = stops.at(-1);
     const seed = existing ?? { startDate: last?.endDate ?? trip.startDate, endDate: last?.endDate ?? trip.startDate };
     return openDialog({
-      title: existing ? "Modifier l'étape" : 'Nouvelle étape',
+      title: existing ? "Modifier la destination" : 'Nouvelle destination',
       content: stopForm(seed),
       submitLabel: existing ? 'Enregistrer' : 'Ajouter',
       onSubmit: async (v) => {
         const body = { name: v.name, startDate: v.startDate, endDate: v.endDate };
         if (existing) await api.updateStop(existing.id, body);
         else { const s = await api.createStop(trip.id, body); openId = s.id; }
-        toast(existing ? 'Étape modifiée.' : 'Étape ajoutée.');
+        toast(existing ? 'Destination modifiée.' : 'Destination ajoutée.');
         await load();
       },
     });
@@ -349,7 +354,7 @@ export async function mount(el) {
     const s = stops.find((x) => x.id === openId);
     if (d.act === 'edit-stop' && s) { openStopDialog(s); return; }
     if (d.act === 'del-stop' && s) {
-      confirmDialog({ title: 'Supprimer cette étape ?', text: `« ${s.name} » et ses logements comparés seront supprimés. Les réservations rattachées sont conservées (détachées de l'étape).`, onConfirm: async () => { await api.deleteStop(s.id); openId = null; toast('Étape supprimée.'); await load(); } });
+      confirmDialog({ title: 'Supprimer cette destination ?', text: `« ${s.name} » et ses logements comparés seront supprimés. Les réservations rattachées sont conservées (détachées de la destination).`, onConfirm: async () => { await api.deleteStop(s.id); openId = null; toast('Destination supprimée.'); await load(); } });
       return;
     }
     if (d.act === 'links') { openLinksDialog(); return; }

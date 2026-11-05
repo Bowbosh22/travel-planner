@@ -721,3 +721,6 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 .stop-cats li { display: grid; grid-template-columns: 110px 1fr auto; align-items: center; gap: 12px; font-size: 14px; }
 .stop-cats .bar { margin-top: 0; height: 8px; }
 @media (max-width: 760px) { .stop-cats li { grid-template-columns: 90px 1fr auto; } .stop-budget .summary-strip.three { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.dash-grid > [data-w="stops"] .stop-grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.dash-grid > [data-w="stops"] .stop-card-main { padding: 14px 16px; }
+.dash-grid > [data-w="stops"] .stop-card { border: 1px solid var(--border); box-shadow: none; }

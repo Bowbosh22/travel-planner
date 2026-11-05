@@ -12,6 +12,7 @@ import { loadLeaflet } from './carte.js';
 import { bearing, distanceKm, flightMinutes, formatDuration, greatCircle } from '../lib/geo.js';
 import { loadCountries, countryAt } from '../lib/countries.js';
 import { addBasemap } from '../lib/basemap.js';
+import { stopCardHtml } from './etapes.js';
 import { html, raw } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { formatEUR, formatMoney, formatPercent, formatRange, formatLongDate, daysBetween, plural, displayCurrencyName } from '../lib/format.js';
@@ -69,7 +70,7 @@ export async function mount(el, { user }) {
     return () => {};
   }
 
-  const bookings = await api.listBookings(trip.id);
+  const [bookings, stops, stays] = await Promise.all([api.listBookings(trip.id), api.listStops(trip.id).catch(() => []), api.listStays(trip.id).catch(() => [])]);
   const summary = summarize(trip, bookings);
   announceBudget(trip.id, summary);
   const timing = tripTiming(trip, today, daysBetween);
@@ -176,6 +177,11 @@ export async function mount(el, { user }) {
           <div id="dash-map" class="dash-map" role="img" aria-label="Carte du trajet et du pays de destination"></div>
           <p class="map-caption muted small-line" id="map-caption">Chargement de la carte…</p>
         </section>
+      <section class="card dash-stops" data-w="stops" aria-label="Destinations du voyage">
+        <h3 class="card-head">${icon('compass', 16)} Mini destinations <a class="small-link" href="#/etapes">${stops.length ? 'Tout voir' : 'Ajouter'}</a></h3>
+        ${stops.length ? html`<div class="stop-grid">${stops.map((st) => stopCardHtml(st, bookings, stays, today))}</div>`
+          : html`<p class="muted">Découpez le voyage en villes (ex. Kuala Lumpur, Penang…) : dates, budget et comparateur de logements pour chacune.</p>`}
+      </section>
       ${hasData ? html`
         <section class="card" data-w="categories" aria-label="Dépenses par catégorie">
           <h3 class="card-head">Par catégorie <span class="muted small-line">prévu</span></h3>
@@ -249,6 +255,8 @@ export async function mount(el, { user }) {
   const layoutEditor = createLayoutEditor(el, { onLayout: () => setTimeout(() => miniMap?.invalidateSize(), 60) }); // ordre, tailles et widgets masqués choisis par l'utilisateur
   const onClick = async (e) => {
     if (layoutEditor.onClick(e)) return;
+    const so = e.target.closest('[data-open]');
+    if (so) { try { sessionStorage.setItem('tp-open-stop', so.dataset.open); } catch { /* sans stockage : vue d'ensemble */ } location.hash = '#/etapes'; return; }
     if (e.target.closest('[data-people-share]')) {
       return openShare(trip, { user, onChange: (t) => { if (t) { trip.members = t.members; trip.inviteToken = t.inviteToken; members = t.members.filter((m) => m.id !== user.id).map((m) => m.firstName); refreshPeople(); } else { location.reload(); } } });
     }
