@@ -2,6 +2,8 @@
 // Les coordonnées sont calculées par le serveur (une seule fois par lieu, puis mémorisées).
 import { api } from '../api.js';
 import { CATEGORIES } from '../services/budget.js';
+import { addBasemap } from '../lib/basemap.js';
+import { travelEstimate, formatMinutes } from '../lib/geo.js';
 import { html, raw } from '../lib/html.js';
 import { formatCurrency, formatLongDate } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
@@ -69,6 +71,11 @@ export async function mount(el) {
           <a id="route-link" class="btn btn-soft btn-sm" target="_blank" rel="noopener noreferrer" hidden>Itinéraire sur Google Maps</a></div>
         <section class="card" aria-label="Lieux">
           <h2 class="section-title in-card">Lieux</h2>
+          <div class="filter-row" id="cat-filter" role="group" aria-label="Filtrer par catégorie">
+            <button type="button" class="chip-btn" data-cat="all" aria-pressed="true">Toutes</button>
+            ${[...new Set(withPlace.map((b) => b.category))].map((id) => html`<button type="button" class="chip-btn" data-cat="${id}" aria-pressed="false">${catLabel(id)}</button>`)}
+          </div>
+          <div id="legs" class="legs" aria-live="polite"></div>
           <ul class="place-list" id="place-list">${withPlace.map((b) => html`
             <li data-id="${b.id}"><button type="button" class="place-btn" data-focus>
               <strong>${b.name}</strong><span class="muted small-line">${b.location}</span><span class="place-state muted small-line" data-state>${b.geoDone ? (b.lat === null ? 'Lieu introuvable : précisez-le dans la réservation.' : '') : 'Localisation en cours…'}</span>
@@ -107,27 +114,70 @@ export async function mount(el) {
   };
 
   const located = new Map(); // id → réservation localisée
-  const updateRoute = () => {
+  let catFilter = 'all';
+  let legLayer = null;
+  let LRef = null;
+  const visible = () => [...located.values()].filter((x) => catFilter === 'all' || x.b.category === catFilter);
+  const byDate = (list) => [...list].sort((a, b) => (a.b.startsOn ?? '9999').localeCompare(b.b.startsOn ?? '9999') || a.b.name.localeCompare(b.b.name));
+
+  // Trajets estimés entre les lieux datés, dans l'ordre du voyage (logement → activité → restaurant…).
+  const drawLegs = () => {
+    const box = el.querySelector('#legs');
     const link = el.querySelector('#route-link');
-    const pts = [...located.values()].sort((a, b) => (a.b.startsOn ?? '9999').localeCompare(b.b.startsOn ?? '9999')).map((x) => [x.lat, x.lng]);
-    if (!link || pts.length < 2) return;
-    link.href = gmapsRoute(pts);
-    link.hidden = false;
+    legLayer?.clearLayers();
+    const dated = byDate(visible().filter((x) => x.b.startsOn));
+    if (link) {
+      const all = byDate(visible());
+      link.hidden = all.length < 2;
+      if (all.length >= 2) link.href = gmapsRoute(all.map((x) => [x.lat, x.lng]));
+    }
+    if (!box) return;
+    if (dated.length < 2) {
+      box.innerHTML = String(html`<p class="muted small-line">${visible().length < 2 ? 'Il faut au moins deux lieux localisés pour estimer un trajet.' : 'Ajoutez des dates à vos réservations pour estimer les trajets entre les lieux.'}</p>`);
+      return;
+    }
+    const legs = dated.slice(1).map((to, i) => ({ from: dated[i], to, est: travelEstimate({ lat: dated[i].lat, lng: dated[i].lng }, { lat: to.lat, lng: to.lng }) }));
+    box.innerHTML = String(html`<h3 class="sim-sub">Trajets estimés</h3><ul class="leg-list">${legs.map((g) => html`
+      <li><div class="leg-names"><strong>${g.from.b.name}</strong> → <strong>${g.to.b.name}</strong></div>
+        <div class="leg-info">${g.est.km < 0.1 ? 'Même endroit' : html`${g.est.km < 10 ? g.est.km.toFixed(1).replace('.', ',') : Math.round(g.est.km)} km · ≈ ${formatMinutes(g.est.car)} en voiture${g.est.walkable ? html` · ≈ ${formatMinutes(g.est.walk)} à pied` : ''}`}
+          · <a href="${gmapsRoute([[g.from.lat, g.from.lng], [g.to.lat, g.to.lng]])}" target="_blank" rel="noopener noreferrer">Itinéraire exact</a></div></li>`)}</ul>
+      <p class="muted small-line">Estimations à vol d'oiseau, sans trafic. Pour l'itinéraire réel, ouvrez-le dans Google Maps.</p>`);
+    if (LRef && legLayer) for (const g of legs) {
+      if (g.est.km < 0.1) continue;
+      LRef.polyline([[g.from.lat, g.from.lng], [g.to.lat, g.to.lng]], { color: '#F0A25A', weight: 2.5, dashArray: '6 6', opacity: 0.9 })
+        .bindTooltip(`≈ ${formatMinutes(g.est.car)} en voiture`, { sticky: true }).addTo(legLayer);
+    }
+  };
+  const applyFilter = () => {
+    for (const [id, m] of markers) {
+      const show = catFilter === 'all' || located.get(id)?.b.category === catFilter;
+      if (show && !map.hasLayer(m)) m.addTo(map);
+      if (!show && map.hasLayer(m)) map.removeLayer(m);
+    }
+    el.querySelectorAll('#place-list li[data-id]').forEach((li) => {
+      const b = withPlace.find((x) => x.id === li.dataset.id);
+      li.hidden = !(catFilter === 'all' || b?.category === catFilter);
+    });
+    el.querySelectorAll('[data-cat]').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.cat === catFilter)));
+    drawLegs();
   };
   const addMarker = (L, b, lat, lng) => {
     located.set(b.id, { b, lat, lng });
-    updateRoute();
-    const m = L.marker([lat, lng], { title: b.name, alt: b.name }).addTo(map).bindPopup(popup(b, lat, lng));
+    const m = L.marker([lat, lng], { title: b.name, alt: b.name }).bindPopup(popup(b, lat, lng));
     markers.set(b.id, m);
+    if (catFilter === 'all' || b.category === catFilter) m.addTo(map);
     stateOf(b.id).textContent = '';
+    drawLegs();
   };
   const fit = (L) => {
-    const pts = [...markers.values()].map((m) => m.getLatLng());
+    const pts = visible().map((x) => L.latLng(x.lat, x.lng));
     if (pts.length === 1) map.setView(pts[0], 13);
     else if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2));
   };
 
   function onClick(e) {
+    const cat = e.target.closest('[data-cat]');
+    if (cat && map) { catFilter = cat.dataset.cat; applyFilter(); if (LRef) fit(LRef); return; }
     const li = e.target.closest('[data-focus]')?.closest('[data-id]');
     const m = li && markers.get(li.dataset.id);
     if (m) { map.setView(m.getLatLng(), Math.max(map.getZoom(), 14)); m.openPopup(); }
@@ -139,7 +189,8 @@ export async function mount(el) {
       const L = await loadLeaflet();
       if (!alive) return cleanup;
       map = L.map(el.querySelector('#map'), { scrollWheelZoom: false }).setView([20, 0], 2);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' }).addTo(map);
+      addBasemap(L, map, { switcher: true });
+      LRef = L; legLayer = L.layerGroup().addTo(map);
 
       for (const b of withPlace) if (b.geoDone && b.lat !== null) addMarker(L, b, b.lat, b.lng);
       fit(L);

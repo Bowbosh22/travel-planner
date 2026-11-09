@@ -18,7 +18,7 @@ const hiddenKey = (tripId) => `tp.overHidden.${tripId}`;
 export function announceBudget(tripId, summary) {
   const notice = budgetNotice(summary, read(seenKey(tripId)));
   write(seenKey(tripId), notice ? notice.overBy : 0);
-  if (notice?.announce) toast(`Attention : ${notice.title.toLowerCase()}.`, 7000, 'warn');
+  if (notice?.announce) toast(`Attention : ${notice.title.toLowerCase()}. Cliquez pour ajuster vos réservations.`, 9000, 'warn', '#/reservations');
 }
 
 // Bandeau en haut de page tant que le budget est dépassé ; masqué jusqu'à ce que le dépassement augmente.
@@ -28,7 +28,7 @@ export function budgetBanner(tripId, summary) {
   return html`
     <div class="budget-banner" role="alert" data-budget-banner>
       <span class="bb-mark" aria-hidden="true">!</span>
-      <div class="bb-text"><strong>${notice.title}</strong><span>${notice.text}</span></div>
+      <a class="bb-text bb-link" href="#/reservations" title="Ouvrir les réservations pour corriger"><strong>${notice.title}</strong><span>${notice.text}</span></a>
       <a class="btn btn-soft btn-sm" href="#/simulateur">Simuler</a>
       <button type="button" class="bb-close" data-budget-hide="${tripId}" data-over="${notice.overBy}" aria-label="Masquer cet avertissement">×</button>
     </div>`;
