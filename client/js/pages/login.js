@@ -6,6 +6,8 @@ import { toast } from '../components/toast.js';
 export const title = 'Connexion';
 
 export async function mount(el, { onAuthenticated, invite = null }) {
+  const cfg = await api.authConfig().catch(() => ({ registrationOpen: true }));
+  const closed = !cfg.registrationOpen && !invite; // inscriptions fermées : on envoie une demande d'accès au propriétaire
   let mode = invite ? 'register' : 'login'; // 'login' | 'register' | 'reset'
   let prefill = '';
 
@@ -33,8 +35,8 @@ export async function mount(el, { onAuthenticated, invite = null }) {
       <div class="auth-wrap">
         <div class="auth-card card">
           <div class="brand auth-brand"><span class="brand-mark">${icon('compass', 18)}</span>Travel Planner</div>
-          <h1>${register ? 'Créer un compte' : 'Connexion'}</h1>
-          ${invite ? html`<p class="invite-banner"><strong>${invite.ownerFirstName}</strong> vous invite à rejoindre le voyage <strong>${invite.name}</strong>${invite.destination ? html` (${invite.destination})` : ''}. ${register ? 'Créez votre compte' : 'Connectez-vous'} pour y accéder.</p>` : html`<p class="muted">${register ? 'Vos voyages et votre budget, au même endroit.' : 'Retrouvez vos voyages et votre budget.'}</p>`}
+          <h1>${register ? (closed ? "Demander l'accès" : 'Créer un compte') : 'Connexion'}</h1>
+          ${invite ? html`<p class="invite-banner"><strong>${invite.ownerFirstName}</strong> vous invite à rejoindre le voyage <strong>${invite.name}</strong>${invite.destination ? html` (${invite.destination})` : ''}. ${register ? 'Créez votre compte' : 'Connectez-vous'} pour y accéder.</p>` : html`<p class="muted">${register && closed ? "L'accès est sur validation. Votre demande est envoyée au propriétaire du site, qui l'approuve ou non." : register ? 'Vos voyages et votre budget, au même endroit.' : 'Retrouvez vos voyages et votre budget.'}</p>`}
           <form id="auth-form" class="auth-form" novalidate>
             ${register ? html`<div class="field"><label for="firstName">Prénom</label><input class="input" id="firstName" name="firstName" autocomplete="given-name" required maxlength="60"></div>` : ''}
             <div class="field"><label for="email">Adresse email</label><input class="input" id="email" name="email" type="email" autocomplete="email" required></div>
@@ -46,10 +48,10 @@ export async function mount(el, { onAuthenticated, invite = null }) {
             <label class="check"><input type="checkbox" name="remember" checked> Se souvenir de moi</label>
             ${register ? '' : html`<p class="forgot"><button type="button" class="link-btn" data-switch-reset>Mot de passe oublié ?</button></p>`}
             <p class="form-error" role="alert" hidden></p>
-            <button class="btn btn-primary" type="submit">${register ? 'Créer mon compte' : 'Se connecter'}</button>
+            <button class="btn btn-primary" type="submit">${register ? (closed ? 'Envoyer ma demande' : 'Créer mon compte') : 'Se connecter'}</button>
           </form>
           <p class="auth-switch">${register ? 'Déjà un compte ?' : 'Pas encore de compte ?'}
-            <button type="button" class="link-btn" data-switch>${register ? 'Se connecter' : 'Créer un compte'}</button></p>
+            <button type="button" class="link-btn" data-switch>${register ? 'Se connecter' : (closed ? "Demander l'accès" : 'Créer un compte')}</button></p>
         </div>
       </div>`);
     el.querySelector('input')?.focus();
@@ -92,6 +94,12 @@ export async function mount(el, { onAuthenticated, invite = null }) {
       const user = mode === 'register'
         ? await api.register(v.firstName, v.email, v.password, remember, invite?.token)
         : await api.login(v.email, v.password, remember);
+      if (user.pending) {
+        toast("Demande envoyée. Vous pourrez vous connecter dès que le propriétaire l'aura approuvée.", 7000);
+        prefill = v.email; mode = 'login'; render();
+        el.querySelector('#email').value = v.email;
+        return;
+      }
       onAuthenticated(user, { joined: mode === 'register' && !!invite });
     } catch (err) {
       errorEl.textContent = err.message;

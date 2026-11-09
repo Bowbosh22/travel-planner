@@ -85,7 +85,11 @@ export const api = {
     return (await request('GET', '/auth/me')).user;
   },
   login: async (email, password, remember) => (await request('POST', '/auth/login', { email, password, remember })).user,
-  register: async (firstName, email, password, remember, invite) => { const r = await request('POST', '/auth/register', { firstName, email, password, remember, invite }); return { ...r.user, recoveryCodes: r.recoveryCodes }; },
+  register: async (firstName, email, password, remember, invite) => { const r = await request('POST', '/auth/register', { firstName, email, password, remember, invite }); if (r.pending) return { pending: true }; return { ...r.user, recoveryCodes: r.recoveryCodes }; },
+  authConfig: async () => await request('GET', '/auth/config'),
+  accessRequests: async () => (await request('GET', '/auth/access-requests')).requests,
+  approveRequest: async (id) => await request('POST', `/auth/access-requests/${encodeURIComponent(id)}/approve`),
+  rejectRequest: async (id) => await request('DELETE', `/auth/access-requests/${encodeURIComponent(id)}`),
   resetPassword: async (email, code, password) => await request('POST', '/auth/reset-password', { email, code, password }),
   savePrefs: async (patch) => await request('PUT', '/auth/prefs', patch),
   sessions: async () => (await request('GET', '/auth/sessions')).sessions,

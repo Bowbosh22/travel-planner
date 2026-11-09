@@ -171,6 +171,10 @@ export async function mount(el, { user, logout }) {
             <h2>Voyageurs de mes voyages</h2>
             <div id="members-box"><p class="muted">Chargement…</p></div>
           </section>
+          <section class="card" aria-label="Demandes d'accès" id="access-card" hidden>
+            <h2>Demandes d'accès</h2>
+            <div id="access-box"><p class="muted">Chargement…</p></div>
+          </section>
           <section class="card" aria-label="Appareils connectés">
             <h2>Appareils connectés</h2>
             <div id="dev-box"><p class="muted">Chargement…</p></div>
@@ -183,7 +187,7 @@ export async function mount(el, { user, logout }) {
         </div>
       </div>`}
     `);
-    if (tab === 'compte') { loadCount(); loadMembers(); loadDevices(); } else wireBookmarklet();
+    if (tab === 'compte') { loadCount(); loadMembers(); loadDevices(); loadAccess(); } else wireBookmarklet();
   };
 
   // Appareils connectés : sessions ouvertes sur ce compte (cet appareil est repéré ; les autres peuvent être déconnectés).
@@ -197,6 +201,21 @@ export async function mount(el, { user, logout }) {
       box.innerHTML = String(html`<ul class="dev-list">${list.map((d) => html`<li><div><strong>${d.device}</strong>${d.current ? html` <span class="badge badge-ok">Cet appareil</span>` : ''}<span class="muted small-line">Dernière activité : ${when(d.lastSeenAt)}</span></div>${d.current ? '' : html`<button type="button" class="link-btn danger-text" data-dev-close="${d.id}">Déconnecter</button>`}</li>`)}</ul>
         ${list.length > 1 ? html`<button type="button" class="btn btn-soft" data-dev-closeall>Déconnecter tous les autres appareils</button>` : html`<p class="muted small-line">Aucun autre appareil connecté.</p>`}`);
     } catch { if (box.isConnected) box.innerHTML = '<p class="muted">Impossible de charger la liste. Réessayez.</p>'; }
+  };
+
+  // Demandes d'accès : visibles seulement pour le propriétaire du site (le serveur refuse les autres).
+  const loadAccess = async () => {
+    const card = el.querySelector('#access-card');
+    const box = el.querySelector('#access-box');
+    if (!card) return;
+    try {
+      const list = await api.accessRequests();
+      if (!box.isConnected) return;
+      card.hidden = false;
+      box.innerHTML = list.length ? String(html`<ul class="dev-list">${list.map((r) => html`<li><div><strong>${r.firstName}</strong><span class="muted small-line">${r.email} · demandé le ${when(r.createdAt)}</span></div>
+        <div class="req-actions"><button type="button" class="btn btn-soft btn-sm" data-req-ok="${r.id}">Approuver</button><button type="button" class="link-btn danger-text" data-req-no="${r.id}">Refuser</button></div></li>`)}</ul>`)
+        : String(html`<p class="muted">Aucune demande en attente. Envoyez simplement le lien du site : les personnes demandent l'accès depuis l'écran de connexion et vous les approuvez ici.</p>`);
+    } catch { /* pas propriétaire : la carte reste masquée */ }
   };
 
   // Voyageurs : seulement les voyages que j'ai créés (le serveur refuse aussi toute autre demande).
@@ -263,6 +282,10 @@ export async function mount(el, { user, logout }) {
       return savePrefs(patch).then((ok) => { if (!ok) toast('Choix appliqué sur cet appareil seulement (connexion au serveur impossible).', 4000, 'warn'); render(); });
     }
     if (e.target.closest('[data-layout-reset]')) return savePrefs({ layout: null }).then(() => toast('Disposition d\'origine rétablie.'));
+    const ok = e.target.closest('[data-req-ok]');
+    if (ok) return api.approveRequest(ok.dataset.reqOk).then(() => { toast('Accès accordé : la personne peut se connecter.'); loadAccess(); }).catch((ex) => toast(ex.message || 'Action impossible.', 4000, 'error'));
+    const no = e.target.closest('[data-req-no]');
+    if (no) return confirmDialog({ title: 'Refuser cette demande ?', text: 'La demande sera supprimée.', confirmLabel: 'Refuser', onConfirm: async () => { await api.rejectRequest(no.dataset.reqNo); toast('Demande refusée.'); loadAccess(); } });
     const dc = e.target.closest('[data-dev-close]');
     if (dc) return api.closeSession(dc.dataset.devClose).then(() => { toast('Appareil déconnecté.'); loadDevices(); }).catch((ex) => toast(ex.message || 'Action impossible.', 4000, 'error'));
     if (e.target.closest('[data-dev-closeall]')) {

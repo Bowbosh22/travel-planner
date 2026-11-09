@@ -2,6 +2,8 @@ import { api } from '../api.js';
 import { summarize } from '../services/budget.js';
 import { chartsMarkup, mountCharts } from '../components/budget-charts.js';
 import { announceBudget, budgetBanner } from '../components/budget-alert.js';
+import { openDialog } from '../components/dialog.js';
+import { toast } from '../components/toast.js';
 import { html, raw } from '../lib/html.js';
 import { formatEUR, formatPercent, daysBetween, plural, displayCurrencyName } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
@@ -54,7 +56,7 @@ export async function mount(el) {
           <span>${formatPercent(s.engagedPct)} du budget engagé, dont ${formatPercent(s.paidPct)} déjà payé</span>
           <span>Réservé (confirmé) : ${formatEUR(s.reserved)}</span>
         </div>
-        <p class="muted small">Le budget initial se modifie dans <a href="#/voyages">Mes voyages</a>.</p>
+        <div class="budget-edit"><button type="button" class="btn btn-soft btn-sm" data-edit-budget>Modifier le budget</button></div>
       </section>
 
       <section class="card" aria-label="Répartition par catégorie">
@@ -86,6 +88,22 @@ export async function mount(el) {
       </section>
     </div>`);
 
+  const onClick = (e) => {
+    if (!e.target.closest('[data-edit-budget]')) return;
+    openDialog({
+      title: 'Modifier le budget',
+      content: html`<div class="field"><label for="bd-amount">Budget initial du voyage « ${trip.name} » (€)</label>
+        <input class="input" id="bd-amount" name="budgetEur" inputmode="decimal" value="${trip.budgetEur ?? ''}" required autofocus></div>
+        <p class="hint">Le budget est défini en euros pour tout le voyage. Les alertes et le disponible se recalculent aussitôt.</p>`,
+      submitLabel: 'Enregistrer',
+      onSubmit: async (v) => {
+        await api.updateTrip(trip.id, { name: trip.name, destination: trip.destination, country: trip.country, origin: trip.origin, startDate: trip.startDate, endDate: trip.endDate, travelers: trip.travelers, planStatus: trip.planStatus, budgetEur: v.budgetEur });
+        toast('Budget modifié.');
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      },
+    });
+  };
+  el.addEventListener('click', onClick);
   const onChange = (e) => {
     if (e.target.id !== 'trip-select') return;
     setActiveTripId(e.target.value);
@@ -93,5 +111,5 @@ export async function mount(el) {
   };
   el.addEventListener('change', onChange);
   const unmountCharts = mountCharts(el, s, trip, hasData);
-  return () => { el.removeEventListener('change', onChange); unmountCharts(); };
+  return () => { el.removeEventListener('change', onChange); el.removeEventListener('click', onClick); unmountCharts(); };
 }

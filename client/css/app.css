@@ -724,3 +724,5 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 .dash-grid > [data-w="stops"] .stop-grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .dash-grid > [data-w="stops"] .stop-card-main { padding: 14px 16px; }
 .dash-grid > [data-w="stops"] .stop-card { border: 1px solid var(--border); box-shadow: none; }
+.req-actions { display: flex; align-items: center; gap: 10px; }
+.budget-edit { margin-top: 12px; }

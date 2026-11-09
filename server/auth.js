@@ -132,7 +132,21 @@ export function createAuth(pool, { secureCookie = false } = {}) {
       const invite = typeof req.body.invite === 'string' && INVITE_TOKEN.test(req.body.invite) ? req.body.invite : null;
       if (process.env.ALLOW_REGISTRATION === 'false') {
         const valid = invite && (await pool.query('SELECT 1 FROM trips WHERE invite_token = $1', [invite])).rowCount > 0;
-        if (!valid) return res.status(403).json({ error: 'Les inscriptions sont fermées.' });
+        if (!valid) {
+          // Pas d'invitation : la demande est mise en attente, le propriétaire du site l'approuve ou la refuse.
+          const asked = validateRegistration(req.body);
+          if (asked.error) return res.status(400).json({ error: asked.error });
+          const a = asked.value;
+          if ((await pool.query('SELECT 1 FROM users WHERE lower(email) = lower($1)', [a.email])).rowCount) return res.status(409).json({ error: 'Un compte existe déjà avec cet email.' });
+          if ((await pool.query('SELECT count(*)::int AS n FROM access_requests')).rows[0].n >= 50) return res.status(429).json({ error: 'Trop de demandes en attente. Réessayez plus tard.' });
+          const h = await hashPassword(a.password);
+          await pool.query(
+            `INSERT INTO access_requests (email, first_name, password_hash) VALUES ($1, $2, $3)
+             ON CONFLICT (lower(email)) DO UPDATE SET first_name = EXCLUDED.first_name, password_hash = EXCLUDED.password_hash, created_at = now()`,
+            [a.email, a.firstName, h]
+          );
+          return res.status(202).json({ pending: true });
+        }
       }
       const parsed = validateRegistration(req.body);
       if (parsed.error) return res.status(400).json({ error: parsed.error });
@@ -152,6 +166,51 @@ export function createAuth(pool, { secureCookie = false } = {}) {
     } catch (err) {
       next(err);
     }
+  });
+
+  // L'écran de connexion adapte son texte : « Créer un compte » ou « Demander l'accès ».
+  router.get('/config', (_req, res) => res.json({ registrationOpen: process.env.ALLOW_REGISTRATION !== 'false' }));
+
+  // Propriétaire du site : l'adresse ADMIN_EMAIL si elle est définie, sinon le tout premier compte créé.
+  const requireAdmin = async (req, res, next) => {
+    try {
+      const adminEmail = String(process.env.ADMIN_EMAIL ?? '').trim().toLowerCase();
+      const ok = adminEmail
+        ? req.user.email.toLowerCase() === adminEmail
+        : (await pool.query('SELECT id FROM users ORDER BY created_at, id LIMIT 1')).rows[0]?.id === req.user.id;
+      return ok ? next() : res.status(403).json({ error: 'Réservé au propriétaire du site.' });
+    } catch (err) { return next(err); }
+  };
+
+  router.get('/access-requests', requireUser, requireAdmin, async (_req, res, next) => {
+    try {
+      const { rows } = await pool.query('SELECT id, email, first_name, created_at FROM access_requests ORDER BY created_at');
+      res.json({ requests: rows.map((r) => ({ id: r.id, email: r.email, firstName: r.first_name, createdAt: r.created_at })) });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/access-requests/:id/approve', requireUser, requireAdmin, async (req, res, next) => {
+    try {
+      if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'Introuvable.' });
+      const { rows: [r] } = await pool.query('SELECT * FROM access_requests WHERE id = $1', [req.params.id]);
+      if (!r) return res.status(404).json({ error: 'Introuvable.' });
+      try {
+        await pool.query('INSERT INTO users (email, first_name, password_hash) VALUES ($1, $2, $3)', [r.email, r.first_name, r.password_hash]);
+      } catch (err) {
+        if (err.code === '23505') { await pool.query('DELETE FROM access_requests WHERE id = $1', [r.id]); return res.status(409).json({ error: 'Un compte existe déjà avec cet email.' }); }
+        throw err;
+      }
+      await pool.query('DELETE FROM access_requests WHERE id = $1', [r.id]);
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/access-requests/:id', requireUser, requireAdmin, async (req, res, next) => {
+    try {
+      if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'Introuvable.' });
+      await pool.query('DELETE FROM access_requests WHERE id = $1', [req.params.id]);
+      res.json({ ok: true });
+    } catch (err) { next(err); }
   });
 
   router.post('/login', async (req, res, next) => {

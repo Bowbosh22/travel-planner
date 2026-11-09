@@ -522,7 +522,7 @@ test('limiteur : au-delà du maximum, 429 avec Retry-After ; les autres clés ne
 test('inscriptions : limitées par adresse, et fermées si ALLOW_REGISTRATION=false', { skip }, async () => {
   process.env.ALLOW_REGISTRATION = 'false';
   try {
-    assert.equal((await signup(client(), 'ferme@test.fr')).status, 403);
+    assert.equal((await signup(client(), 'ferme@test.fr')).status, 202);
   } finally { delete process.env.ALLOW_REGISTRATION; }
   // Limite par adresse : une seconde instance de l'application, réglée à 2 inscriptions par heure
   const strict = createApp(pool, { isProd: false, limits: { registrationsPerHour: 2 } }).listen(0);
@@ -657,8 +657,8 @@ test('voyage partagé : lien d\'invitation, accès commun, suppression réservé
   process.env.ALLOW_REGISTRATION = 'false';
   try {
     const bob = client();
-    assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob' })).status, 403);
-    assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob', invite: 'y'.repeat(32) })).status, 403);
+    assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob' })).status, 202);
+    assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob', invite: 'y'.repeat(32) })).status, 202);
     assert.equal((await signup(bob, 'share-bob@test.fr', { firstName: 'Bob', invite: token })).status, 201);
     const list = (await bob.get('/api/trips')).body.trips;
     assert.equal(list.length, 1);
@@ -690,7 +690,7 @@ test('voyage partagé : lien d\'invitation, accès commun, suppression réservé
     // Révocation du lien
     assert.equal((await owner.del(`/api/trips/${t.id}/invite`)).status, 200);
     assert.equal((await client().get(`/api/invites/${token}`)).status, 404);
-    assert.equal((await signup(client(), 'share-zed@test.fr', { invite: token })).status, 403);
+    assert.equal((await signup(client(), 'share-zed@test.fr', { invite: token })).status, 202);
   } finally { delete process.env.ALLOW_REGISTRATION; }
 });
 
@@ -929,4 +929,39 @@ test('logements : comparateur trié par prix, retenir / annuler', { skip }, asyn
   assert.equal((await intruder.post(`/api/stays/${bon.id}/choose`)).status, 404);
   assert.equal((await intruder.del(`/api/stays/${bon.id}`)).status, 404);
   assert.equal((await c.del(`/api/stays/${bon.id}`)).status, 200);
+});
+
+test('demandes d\'accès : inscriptions fermées, le propriétaire approuve ou refuse', { skip }, async () => {
+  process.env.ALLOW_REGISTRATION = 'false';
+  try {
+    assert.equal((await client().get('/api/auth/config')).body.registrationOpen, false);
+    const asker = client();
+    const r = await signup(asker, 'demande@test.fr', { firstName: 'Dem' });
+    assert.equal(r.status, 202);
+    assert.equal(r.body.pending, true);
+    assert.equal((await asker.get('/api/auth/me')).body.user, null, 'aucune session avant approbation');
+    assert.equal((await client().post('/api/auth/login', { email: 'demande@test.fr', password: 'motdepasse-long' })).status, 401, 'pas de compte avant approbation');
+    assert.equal((await signup(client(), 'ana@test.fr')).status, 409, 'email déjà inscrit');
+    assert.equal((await signup(client(), 'court@test.fr', { password: 'court' })).status, 400);
+
+    const stranger = client();
+    await stranger.post('/api/auth/login', { email: 'bob@test.fr', password: 'motdepasse-long' });
+    assert.equal((await stranger.get('/api/auth/access-requests')).status, 403, 'réservé au propriétaire');
+    assert.equal((await client().get('/api/auth/access-requests')).status, 401);
+
+    const owner = client();
+    await owner.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+    const list = (await owner.get('/api/auth/access-requests')).body.requests;
+    const req = list.find((x) => x.email === 'demande@test.fr');
+    assert.ok(req);
+    assert.equal(req.password_hash, undefined);
+    assert.equal((await owner.post(`/api/auth/access-requests/${req.id}/approve`)).status, 200);
+    assert.equal((await client().post('/api/auth/login', { email: 'demande@test.fr', password: 'motdepasse-long' })).status, 200, 'peut se connecter avec son mot de passe');
+    assert.equal((await owner.post(`/api/auth/access-requests/${req.id}/approve`)).status, 404);
+
+    await signup(client(), 'refus@test.fr', { firstName: 'Ref' });
+    const no = (await owner.get('/api/auth/access-requests')).body.requests.find((x) => x.email === 'refus@test.fr');
+    assert.equal((await owner.del(`/api/auth/access-requests/${no.id}`)).status, 200);
+    assert.equal((await client().post('/api/auth/login', { email: 'refus@test.fr', password: 'motdepasse-long' })).status, 401);
+  } finally { delete process.env.ALLOW_REGISTRATION; }
 });
