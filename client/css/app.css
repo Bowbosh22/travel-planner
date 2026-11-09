@@ -730,3 +730,4 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 .share-how summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
 .share-how ol { margin: 6px 0 4px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 .share-url { display: inline-block; padding: 4px 8px; border-radius: 8px; background: var(--soft); color: var(--soft-text); font-size: 13px; overflow-wrap: anywhere; }
+.paste-btn { margin: 8px 0 4px; width: 100%; }

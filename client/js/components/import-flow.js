@@ -14,6 +14,7 @@ const urlStep = (value = '') => html`
   <div class="field">
     <label for="i-url">Lien de la réservation</label>
     <input class="input" id="i-url" name="url" type="url" inputmode="url" placeholder="https://..." autocomplete="off" value="${value}" required>
+    <button type="button" class="btn btn-soft paste-btn" data-paste>Coller le lien copié</button>
     <small class="hint">Hôtel, restaurant, activité, vol... Nous lisons seulement les informations publiques de la page. Rien n'est inventé : vous vérifiez tout avant d'ajouter.</small>
   </div>`;
 
@@ -74,6 +75,19 @@ function captureResult(c) {
   };
 }
 
+// « Coller le lien copié » : lit le presse-papiers (sur un geste de l'utilisateur) et lance l'analyse.
+function wirePaste(dlg) {
+  dlg.querySelector('[data-paste]')?.addEventListener('click', async () => {
+    try {
+      const m = String(await navigator.clipboard.readText()).match(/https?:\/\/[^\s<>"']+/i);
+      if (!m) return toast("Aucun lien trouvé dans ce que vous avez copié. Copiez d'abord le lien du logement.", 4500);
+      dlg.querySelector('#i-url').value = m[0];
+      dlg.querySelector('[type="submit"]')?.click();
+    } catch { toast('Collez le lien dans le champ : appui long, puis « Coller ».', 4500); }
+    return undefined;
+  });
+}
+
 export async function openImport({ capture, sharedUrl } = {}) {
   let trips = [];
   try {
@@ -95,7 +109,8 @@ export async function openImport({ capture, sharedUrl } = {}) {
     content: capture ? reviewStep(captureResult(capture), trips, activeId, currencies) : urlStep(sharedUrl ?? ''),
     submitLabel: capture ? 'Ajouter au voyage' : 'Analyser le lien',
     onMount: capture ? (dlg) => { wireAmountField(dlg); dlg.querySelector('#i-name')?.focus(); }
-      : sharedUrl ? (dlg) => { dlg.querySelector('[type="submit"]')?.click(); } : undefined, // lien partagé : analyse lancée tout de suite
+      : sharedUrl ? (dlg) => { dlg.querySelector('[type="submit"]')?.click(); } // lien partagé : analyse lancée tout de suite
+      : (dlg) => wirePaste(dlg),
     onSubmit: async (v, dlg) => {
       if (step === 'url') {
         const result = await api.importUrl(v.url); // les erreurs (captcha, adresse refusée...) s'affichent dans la boîte
