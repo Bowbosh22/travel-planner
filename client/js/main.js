@@ -16,6 +16,7 @@ import * as settings from './pages/settings.js';
 import * as placeholder from './pages/placeholder.js';
 import * as login from './pages/login.js';
 import { takeCapture } from './lib/capture.js';
+import { takeSharedUrl } from './lib/share.js';
 import { getActiveTripId } from './store.js';
 import { toast } from './components/toast.js';
 import { showRecoveryCodes } from './components/recovery-dialog.js';
@@ -32,6 +33,8 @@ let destroyCurrent = () => {};
 let token = 0;
 let first = true;
 let pendingInvite = null; // { token, preview } : lien d'invitation ouvert avant connexion
+let pendingShared = takeSharedUrl(); // lien reçu par « Partager » : analysé après connexion
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 let pendingCapture = takeCapture(); // données du favori « Importer », à présenter après connexion
 
 async function logout() {
@@ -128,6 +131,7 @@ async function render() {
     view.innerHTML = `<section class="card empty"><h2>Une erreur est survenue</h2><p>${err.status === 0 ? err.message : 'Rechargez la page. Si le problème persiste, réessayez plus tard.'}</p></section>`;
   }
 
+  if (pendingShared) { const u = pendingShared; pendingShared = null; openImport({ sharedUrl: u }); }
   if (pendingCapture) { const c = pendingCapture; pendingCapture = null; openImport({ capture: c }); }
   if (!first) { window.scrollTo({ top: 0 }); view.focus({ preventScroll: true }); }
   first = false;

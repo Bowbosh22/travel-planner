@@ -66,9 +66,7 @@
   --warn:#FFB26B; --danger:#FF8A8A;
   color-scheme: dark;
 }
-:root[data-theme="paysage"] { --page-bg: url('/img/paysage.svg'); }
-:root[data-theme="paysage"] body { background: #10211f; }
-:root[data-theme="paysage"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; background: var(--page-bg) center / cover no-repeat; pointer-events: none; transform: translateZ(0); }
+:root[data-theme="paysage"] body { background: #10211f url('/img/paysage.svg') center / cover fixed no-repeat; }
 :root[data-theme="paysage"] .card, :root[data-theme="paysage"] .sidebar, :root[data-theme="paysage"] .tabbar {
   -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
 }

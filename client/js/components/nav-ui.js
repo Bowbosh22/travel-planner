@@ -9,12 +9,10 @@ export function renderSidebar(el, path) {
   const main = NAV.filter((n) => !n.footer);
   const footer = NAV.filter((n) => n.footer);
   el.innerHTML = String(html`
-    <div class="rail">
-      <a class="brand" href="#/" data-label="Travel Planner"><span class="brand-mark">${icon('compass', 18)}</span><span class="nav-label">Travel Planner</span></a>
-      ${main.map((n) => link(n, path))}
-      <div class="sidebar-spacer"></div>
-      ${footer.map((n) => link(n, path))}
-    </div>
+    <a class="brand" href="#/" data-label="Travel Planner"><span class="brand-mark">${icon('compass', 18)}</span><span class="nav-label">Travel Planner</span></a>
+    ${main.map((n) => link(n, path))}
+    <div class="sidebar-spacer"></div>
+    ${footer.map((n) => link(n, path))}
   `);
 }
 

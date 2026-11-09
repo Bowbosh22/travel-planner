@@ -10,10 +10,10 @@ import { getActiveTripId, setActiveTripId } from '../store.js';
 
 const STATUS = { reserve: 'Réservé', a_reserver: 'À réserver' };
 
-const urlStep = html`
+const urlStep = (value = '') => html`
   <div class="field">
     <label for="i-url">Lien de la réservation</label>
-    <input class="input" id="i-url" name="url" type="url" inputmode="url" placeholder="https://..." autocomplete="off" required>
+    <input class="input" id="i-url" name="url" type="url" inputmode="url" placeholder="https://..." autocomplete="off" value="${value}" required>
     <small class="hint">Hôtel, restaurant, activité, vol... Nous lisons seulement les informations publiques de la page. Rien n'est inventé : vous vérifiez tout avant d'ajouter.</small>
   </div>`;
 
@@ -74,7 +74,7 @@ function captureResult(c) {
   };
 }
 
-export async function openImport({ capture } = {}) {
+export async function openImport({ capture, sharedUrl } = {}) {
   let trips = [];
   try {
     trips = await api.listTrips();
@@ -92,9 +92,10 @@ export async function openImport({ capture } = {}) {
 
   return openDialog({
     title: capture ? 'Vérifier avant d\'ajouter' : 'Importer depuis un lien',
-    content: capture ? reviewStep(captureResult(capture), trips, activeId, currencies) : urlStep,
+    content: capture ? reviewStep(captureResult(capture), trips, activeId, currencies) : urlStep(sharedUrl ?? ''),
     submitLabel: capture ? 'Ajouter au voyage' : 'Analyser le lien',
-    onMount: capture ? (dlg) => { wireAmountField(dlg); dlg.querySelector('#i-name')?.focus(); } : undefined,
+    onMount: capture ? (dlg) => { wireAmountField(dlg); dlg.querySelector('#i-name')?.focus(); }
+      : sharedUrl ? (dlg) => { dlg.querySelector('[type="submit"]')?.click(); } : undefined, // lien partagé : analyse lancée tout de suite
     onSubmit: async (v, dlg) => {
       if (step === 'url') {
         const result = await api.importUrl(v.url); // les erreurs (captcha, adresse refusée...) s'affichent dans la boîte

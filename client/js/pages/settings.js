@@ -109,6 +109,22 @@ export async function mount(el, { user, logout }) {
             <p class="muted" style="margin:8px 0 12px">Déplacez, redimensionnez ou masquez les widgets : sur le Dashboard, bouton « Personnaliser ».</p>
             <div class="row-actions"><a class="btn btn-soft" href="#/" data-go-dash>Ouvrir le Dashboard</a><button type="button" class="btn btn-ghost" data-layout-reset>Disposition d'origine</button></div>
           </section>
+          <section class="card" aria-label="Importer depuis le menu Partager">
+            <h2>Importer depuis une autre application</h2>
+            <p class="muted" style="margin:8px 0 12px">Dans Booking, Airbnb, Google Maps, Safari… touchez <strong>Partager</strong> : le lien est analysé et vous n'avez plus qu'à vérifier avant d'ajouter.</p>
+            <details class="share-how" open><summary>Android (Chrome)</summary>
+              <ol><li>Ouvrez ce site dans Chrome, menu ⋮ → <strong>Installer l'application</strong> (ou « Ajouter à l'écran d'accueil »).</li>
+              <li>Dans n'importe quelle application : <strong>Partager</strong> → <strong>Travel Planner</strong>.</li></ol>
+            </details>
+            <details class="share-how"><summary>iPhone (Raccourcis)</summary>
+              <p class="muted small-line">Safari ne permet pas à un site d'apparaître dans Partager : un Raccourci fait le même travail.</p>
+              <ol><li>Ouvrez l'app <strong>Raccourcis</strong> → <strong>+</strong> (nouveau raccourci).</li>
+              <li>Ajoutez l'action <strong>Encoder l'URL</strong> (ou « Encoder en URL ») sur « Entrée du raccourci ».</li>
+              <li>Ajoutez l'action <strong>Ouvrir les URL</strong> avec ce texte, suivi du résultat de l'étape précédente :<br><code class="share-url" id="share-base">${location.origin}/?url=</code> <button type="button" class="link-btn" data-copy-share>Copier</button></li>
+              <li>Réglages du raccourci (ⓘ) → activez <strong>Afficher dans la feuille de partage</strong>, type <strong>URL</strong> et <strong>Pages Safari</strong>. Nommez-le « Travel Planner ».</li>
+              <li>Ensuite : <strong>Partager</strong> → <strong>Travel Planner</strong> (au besoin « Modifier les actions » pour l'ajouter aux favoris).</li></ol>
+            </details>
+          </section>
           <section class="card" aria-label="Favori d'import">
             <h2>Importer depuis mon navigateur</h2>
             <p class="muted" style="margin:8px 0 16px">Pour Airbnb, Booking et tout site qui refuse les robots : le favori lit la page que <strong>vous</strong> regardez (nom, lieu, total, dates) et préremplit une réservation. Vous vérifiez avant d'ajouter.</p>
@@ -282,6 +298,9 @@ export async function mount(el, { user, logout }) {
       return savePrefs(patch).then((ok) => { if (!ok) toast('Choix appliqué sur cet appareil seulement (connexion au serveur impossible).', 4000, 'warn'); render(); });
     }
     if (e.target.closest('[data-layout-reset]')) return savePrefs({ layout: null }).then(() => toast('Disposition d\'origine rétablie.'));
+    if (e.target.closest('[data-copy-share]')) {
+      return navigator.clipboard?.writeText(`${location.origin}/?url=`).then(() => toast('Adresse copiée.')).catch(() => toast('Copie impossible : sélectionnez le texte à la main.'));
+    }
     const ok = e.target.closest('[data-req-ok]');
     if (ok) return api.approveRequest(ok.dataset.reqOk).then(() => { toast('Accès accordé : la personne peut se connecter.'); loadAccess(); }).catch((ex) => toast(ex.message || 'Action impossible.', 4000, 'error'));
     const no = e.target.closest('[data-req-no]');
