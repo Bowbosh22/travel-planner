@@ -188,8 +188,8 @@ export function createStopRoutes(pool, fx, geocoder) {
       const o = await loadStay(req.params.id, req.user.id);
       if (!o) return notFound(res);
       if (o.booking_id) return res.json({ stay: await stayById(o.id), bookingId: o.booking_id });
-      const other = await pool.query('SELECT 1 FROM stay_options WHERE stop_id=$1 AND booking_id IS NOT NULL', [o.stop_id]);
-      if (other.rowCount) return res.status(409).json({ error: 'Un autre logement est déjà retenu pour cette destination. Retirez-le d\'abord.' });
+      // Changement de logement : les autres logements de la destination restent dans Réservations mais sont détachés du budget.
+      const { rows: off } = await pool.query(`UPDATE bookings SET in_budget=false WHERE stop_id=$1 AND category='logement' AND in_budget AND status<>'annule' RETURNING name`, [o.stop_id]);
       const { rows: [stop] } = await pool.query('SELECT * FROM trip_stops WHERE id=$1', [o.stop_id]);
       const { rows: [b] } = await pool.query(
         `INSERT INTO bookings (trip_id, category, name, amount_eur, status, source_url, starts_on, ends_on, location, currency, original_amount, fx_rate, fx_date, fx_source, stop_id)
@@ -197,7 +197,7 @@ export function createStopRoutes(pool, fx, geocoder) {
         [o.trip_id, o.name, o.amount_eur, o.url, stop.start_date, stop.end_date, o.location, o.currency, o.original_amount, o.fx_rate ?? 1, o.fx_date_s ?? todayIso(), o.fx_source ?? 'EUR', o.stop_id]
       );
       await pool.query('UPDATE stay_options SET booking_id=$2 WHERE id=$1', [o.id, b.id]);
-      res.json({ stay: await stayById(o.id), bookingId: b.id });
+      res.json({ stay: await stayById(o.id), bookingId: b.id, detached: off.map((x) => x.name) });
     } catch (err) { next(err); }
   });
 

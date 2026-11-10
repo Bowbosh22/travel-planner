@@ -916,7 +916,12 @@ test('logements : comparateur trié par prix, retenir / annuler', { skip }, asyn
   assert.equal(bk.endsOn, '2026-12-17');
   assert.equal(bk.amountEur, 40);
   assert.equal(bk.stopId, stop.id);
-  assert.equal((await c.post(`/api/stays/${usd.id}/choose`)).status, 409, 'un seul logement retenu par étape');
+  const ch2 = await c.post(`/api/stays/${usd.id}/choose`); // changement de logement : l'ancien reste, détaché du budget
+  assert.equal(ch2.status, 200); assert.equal(ch2.body.detached.length, 1);
+  const both = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings;
+  assert.equal(both.find((x) => x.id === ch.bookingId).inBudget, false);
+  assert.equal(both.find((x) => x.id === ch2.body.bookingId).inBudget, true);
+  await c.post(`/api/stays/${usd.id}/unchoose`);
   const un = (await c.post(`/api/stays/${bon.id}/unchoose`)).body.stay;
   assert.equal(un.chosen, false);
   assert.equal((await c.get(`/api/trips/${t.id}/bookings`)).body.bookings.some((x) => x.id === ch.bookingId), false);

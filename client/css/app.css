@@ -774,3 +774,12 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 .booking.is-off-budget .booking-amount, .stop-bookings li.is-off-budget strong { text-decoration: line-through; opacity: .6; }
 .booking.is-off-budget { opacity: .85; }
 .off-note { margin: 0 0 10px; }
+
+/* Comparateur de logements unifié */
+.lodging-kpis { display: flex; flex-wrap: wrap; gap: 8px 40px; margin: 6px 0 12px; }
+.lodging-kpis strong { font-size: 20px; display: block; }
+.lodging-alerts { list-style: none; margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--text); font-size: 13.5px; display: grid; gap: 4px; }
+.lodging-alerts li::before { content: '⚠ '; }
+.lodging-table tr.lg-group th { padding: 14px 10px 8px; font-size: 14px; color: var(--text); border-bottom: 1px solid var(--border); }
+.lodging-table .lg-empty { padding: 8px 10px; }
+@media (max-width: 760px) { .lodging-table tr.lg-group, .lodging-table tr.lg-group th { display: block; width: 100%; } .lodging-table tr.lg-group { padding: 8px 0 0; border: 0; } .lodging-table .lg-empty { display: block; text-align: left; } }

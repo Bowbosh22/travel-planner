@@ -72,8 +72,8 @@ function openPicker(group, focusRole) {
     open = null;
     if (commit && `${st.start}|${st.end}` !== before) {
       // Les « change » partent à la fermeture : une page qui se redessine à chaque changement ne détruit pas le calendrier en cours.
-      inputs.start.dispatchEvent(new Event('change', { bubbles: true }));
-      if (range) inputs.end.dispatchEvent(new Event('change', { bubbles: true }));
+      inputs.start.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: 'manual' }));
+      if (range) inputs.end.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: 'manual' }));
     }
     (focusRole === 'end' && range ? group.buttons.end : group.buttons.start)?.focus();
   };

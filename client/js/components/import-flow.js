@@ -7,6 +7,7 @@ import { amountFieldHtml, amountPayload, loadCurrencies, wireAmountField } from 
 import { CATEGORIES } from '../services/budget.js';
 import { html, raw } from '../lib/html.js';
 import { formatShortDate } from '../lib/format.js';
+import { applyStopDefaults, watchManualEdits } from '../lib/stop-defaults.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 
 const STATUS = { reserve: 'Réservé', a_reserver: 'À réserver' };
@@ -102,11 +103,22 @@ function captureResult(c) {
 async function loadStops(tripId) {
   try { return await api.listStops(tripId); } catch { return []; }
 }
+const IDS = { start: 'i-start', end: 'i-end', loc: 'i-loc' };
 function wireTrip(dlg, fields) {
+  let known = [];
+  const wireStop = (stops) => {
+    known = stops;
+    // Choisir une mini destination remplit les dates et le lieu vides (ce que le site a fourni n'est jamais écrasé).
+    dlg.querySelector('#i-stop')?.addEventListener('change', (e) => applyStopDefaults(dlg, known.find((x) => x.id === e.target.value), IDS));
+  };
+  watchManualEdits(dlg, IDS);
+  const first = dlg.querySelector('#i-stop');
+  if (first) { known = []; api.listStops(dlg.querySelector('#i-trip').value).then((st) => { wireStop(st); if (first.value) applyStopDefaults(dlg, st.find((x) => x.id === first.value), IDS); }).catch(() => {}); }
   dlg.querySelector('#i-trip')?.addEventListener('change', async (e) => {
     const stops = await loadStops(e.target.value);
     const wrap = dlg.querySelector('#i-stop-wrap');
     if (wrap) wrap.innerHTML = String(stopFieldHtml(stops, guessStop(stops, fields)));
+    wireStop(stops);
   });
 }
 

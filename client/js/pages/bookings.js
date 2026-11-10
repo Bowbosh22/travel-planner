@@ -6,6 +6,7 @@ import { toast } from '../components/toast.js';
 import { announceBudget, budgetBanner } from '../components/budget-alert.js';
 import { CATEGORIES, summarize } from '../services/budget.js';
 import { html, raw } from '../lib/html.js';
+import { applyStopDefaults, watchManualEdits } from '../lib/stop-defaults.js';
 import { icon } from '../lib/icons.js';
 import { formatMoney, formatLongDate, formatShortDate, formatEUR, formatPercent, formatCurrency, formatRate } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
@@ -188,10 +189,22 @@ export async function mount(el) {
 
   const payload = (v) => ({ name: v.name, category: v.category, status: v.status, ...amountPayload(v), location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl, ...(v.stopId !== undefined ? { stopId: v.stopId || null } : {}), inBudget: v.inBudget === 'on' });
 
-  const openBookingForm = async (existing) => openDialog({
+  const seedFor = (stopId) => { const st = stops.find((x) => x.id === stopId); return st ? { stopId, startsOn: st.startDate, endsOn: st.endDate, location: st.name } : {}; };
+  const IDS = { start: 'b-start', end: 'b-end', loc: 'b-loc' };
+
+  const openBookingForm = async (existing, seed = null) => openDialog({
     title: existing ? 'Modifier la réservation' : 'Nouvelle réservation',
-    content: bookingForm(existing ?? (opts.stop !== 'all' && opts.stop !== 'none' ? { stopId: opts.stop } : {}), await loadCurrencies(), stops),
-    onMount: (dlg) => { wireAmountField(dlg, { editing: existing ?? null }); dlg.querySelector('#b-start').dataset.dpSeed = trip.startDate ?? ''; },
+    content: bookingForm(existing ?? seed ?? seedFor(opts.stop !== 'all' && opts.stop !== 'none' ? opts.stop : ''), await loadCurrencies(), stops),
+    onMount: (dlg) => {
+      wireAmountField(dlg, { editing: existing ?? null });
+      dlg.querySelector('#b-start').dataset.dpSeed = trip.startDate ?? '';
+      if (existing) return;
+      // Nouvelle réservation : choisir une mini destination remplit les dates et le lieu (sans écraser ce que vous avez saisi).
+      const first = existing ?? seed ?? seedFor(opts.stop !== 'all' && opts.stop !== 'none' ? opts.stop : '');
+      for (const id of [IDS.start, IDS.end, IDS.loc]) if (first.stopId && dlg.querySelector(`#${id}`)?.value) dlg.querySelector(`#${id}`).dataset.auto = '1';
+      watchManualEdits(dlg, IDS);
+      dlg.querySelector('#b-stop')?.addEventListener('change', (e) => applyStopDefaults(dlg, stops.find((x) => x.id === e.target.value), IDS));
+    },
     submitLabel: existing ? 'Enregistrer' : 'Ajouter',
     onSubmit: async (v) => {
       if (existing) await api.updateBooking(existing.id, payload(v));
@@ -288,6 +301,11 @@ export async function mount(el) {
   };
 
   await load();
+  // Arrivée depuis une mini destination (« Ajouter une réservation ») : le formulaire s'ouvre prérempli.
+  try {
+    const want = sessionStorage.getItem('tp-new-booking');
+    if (want) { sessionStorage.removeItem('tp-new-booking'); openBookingForm(null, seedFor(want)); }
+  } catch { /* stockage indisponible : on ignore */ }
   el.addEventListener('click', onClick);
   el.addEventListener('change', onChange);
   return () => { el.removeEventListener('click', onClick); el.removeEventListener('change', onChange); };

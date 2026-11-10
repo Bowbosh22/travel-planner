@@ -11,6 +11,7 @@ import { addBasemap } from '../lib/basemap.js';
 import { formatMoney, formatRange, formatShortDate, formatLongDate, formatCurrency, daysBetween, plural } from '../lib/format.js';
 import { getActiveTripId, setActiveTripId } from '../store.js';
 import { loadLeaflet } from './carte.js';
+import { lodgingRows, whatIf, lodgingOverview } from '../lib/logements.js';
 
 export const title = 'Mini destinations';
 
@@ -42,7 +43,7 @@ export function stopCardHtml(s, bookings, stays, today) {
   const n = nightsOf(s);
   const bud = stopBudget(bookings, s.id);
   const list = stays.filter((x) => x.stopId === s.id).sort(byPrice);
-  const chosen = list.find((x) => x.chosen);
+  const chosen = list.filter((x) => x.chosen).find((x) => bookings.find((b) => b.id === x.bookingId)?.inBudget !== false) ?? null;
   const priced = list.filter((x) => x.amountEur !== null);
   let lodging;
   if (chosen) lodging = html`<strong>${chosen.name}</strong><span class="muted">Logement retenu${chosen.amountEur !== null ? ` · ${formatMoney(chosen.amountEur)}` : ''}</span>`;
@@ -145,6 +146,46 @@ export async function mount(el) {
   // ---------- Vue d'ensemble : une carte-tableau de bord par destination ----------
   const stopCard = (s) => stopCardHtml(s, bookings, stays, today);
 
+  // ---------- Comparateur de logements unifié : toutes les destinations, avec l'effet de chaque choix sur le budget ----------
+  const effectCell = (s, r) => {
+    if (r.inBudget) return html`<span class="badge badge-ok">Dans le budget</span>`;
+    const w = whatIf(trip, bookings, s.id, r);
+    if (!w || w.unknown) return html`<span class="muted">Prix à renseigner</span>`;
+    const d = Math.round(w.delta);
+    return html`Reste <strong class="${w.over ? 'danger-text' : ''}">${formatMoney(w.after)}</strong>
+      <div class="muted stay-sub">${d === 0 ? 'identique à maintenant' : `${d > 0 ? '+' : '−'}${formatMoney(Math.abs(d))} vs maintenant`}${w.over ? ' · dépasse le budget' : ''}</div>`;
+  };
+  const lodgingSection = () => {
+    const groups = stops.map((s) => ({ s, rows: lodgingRows(s, stays, bookings) }));
+    const ov = lodgingOverview(trip, stops, stays, bookings);
+    const body = groups.map(({ s, rows }) => html`
+      <tr class="lg-group"><th colspan="5" scope="colgroup">${s.name} <span class="muted">· ${formatRange(s.startDate, s.endDate)} · ${nightsOf(s)} ${plural(nightsOf(s), 'nuit', 'nuits')}</span></th></tr>
+      ${rows.length ? rows.map((r) => html`<tr class="${r.inBudget ? 'is-chosen' : ''}">
+        <td data-label="Logement"><div class="stay-name">${r.url ? html`<a href="${r.url}" target="_blank" rel="noopener noreferrer nofollow">${r.name}</a>` : r.name}
+          ${r.kind === 'piste' ? html`<span class="badge">Piste</span>` : r.inBudget ? '' : html`<span class="badge badge-off">Hors budget</span>`}</div></td>
+        <td data-label="Prix" class="num">${r.amountEur === null ? html`<span class="muted">À renseigner</span>` : html`<strong>${formatMoney(r.amountEur)}</strong>`}</td>
+        <td data-label="Par nuit" class="num">${r.perNight === null ? '—' : formatMoney(r.perNight)}</td>
+        <td data-label="Effet sur le budget">${effectCell(s, r)}</td>
+        <td class="stay-actions">${r.kind === 'piste'
+          ? html`<button type="button" class="btn btn-soft btn-sm" data-uchoose="${r.id}">Retenir</button>`
+          : r.inBudget ? html`<button type="button" class="btn btn-ghost btn-sm" data-ubudget="${r.id}" data-uin="0">Détacher</button>`
+            : html`<button type="button" class="btn btn-soft btn-sm" data-ubudget="${r.id}" data-uin="1">Attacher</button>`}</td></tr>`)
+      : html`<tr><td colspan="5" class="muted lg-empty">Aucun logement pour l'instant. <button type="button" class="btn btn-ghost btn-sm" data-open="${s.id}">Ajouter des liens</button></td></tr>`}`);
+    return html`
+      <section class="card" aria-label="Comparateur de logements">
+        <div class="card-head"><h2 class="section-title in-card">Comparateur de logements <span class="muted">· toutes les destinations</span></h2></div>
+        <div class="lodging-kpis">
+          <div><div class="metric-label">Logements dans le budget</div><strong>${formatMoney(ov.total)}</strong></div>
+          <div><div class="metric-label">Budget restant</div><strong class="${ov.remaining < 0 ? 'danger-text' : ''}">${formatMoney(ov.remaining)}</strong></div>
+        </div>
+        ${ov.alerts.length ? html`<ul class="lodging-alerts" role="status">${ov.alerts.map((a) => html`<li>${a.text}</li>`)}</ul>` : ''}
+        <div class="table-wrap"><table class="stay-table lodging-table">
+          <thead><tr><th>Logement</th><th class="num">Prix</th><th class="num">Par nuit</th><th>Effet sur le budget</th><th><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody>${body}</tbody></table></div>
+        <p class="hint">« Retenir » ou « Attacher » fait compter ce logement dans le budget et détache les autres logements de la même destination (ils restent dans Réservations).</p>
+      </section>`;
+  };
+
   function renderOverview() {
     const total = stops.reduce((n, s) => n + stopBudget(bookings, s.id).total, 0);
     const nights = stops.reduce((n, s) => n + nightsOf(s), 0);
@@ -161,7 +202,8 @@ export async function mount(el) {
         <section class="card empty"><h2>Aucune destination</h2><p>Ex. pour la Malaisie : Kuala Lumpur, Penang, Langkawi… Chaque destination a ses dates, son budget, sa carte et son comparateur de logements.</p>
           <button type="button" class="btn btn-primary" data-act="new-stop">${icon('plus', 16)}Ajouter la première destination</button></section>` : html`
         <section class="card stops-map-card" aria-label="Carte des destinations"><div id="stop-map" class="stop-map"></div></section>
-        <div class="stop-grid">${stops.map(stopCard)}</div>`}`);
+        <div class="stop-grid">${stops.map(stopCard)}</div>
+        ${lodgingSection()}`}`);
     killMap();
     if (stops.length) {
       drawMap(overviewPoints());
@@ -187,8 +229,9 @@ export async function mount(el) {
         <tr class="${x.chosen ? 'is-chosen' : ''}" data-stay="${x.id}">
           <td data-label="Logement">
             <div class="stay-name">${x.url ? html`<a href="${x.url}" target="_blank" rel="noopener noreferrer nofollow">${x.name}</a>` : x.name}
-              ${x.chosen ? html`<span class="badge badge-ok">Retenu</span>` : ''}${!x.chosen && cheapest && x.id === cheapest.id && list.filter((y) => y.amountEur !== null).length > 1 ? html`<span class="badge">Le moins cher</span>` : ''}</div>
+              ${x.chosen ? html`<span class="badge badge-ok">Retenu</span>${bookings.find((b) => b.id === x.bookingId)?.inBudget === false ? html`<span class="badge badge-off">Hors budget</span>` : ''}` : ''}${!x.chosen && cheapest && x.id === cheapest.id && list.filter((y) => y.amountEur !== null).length > 1 ? html`<span class="badge">Le moins cher</span>` : ''}</div>
             ${x.location || x.notes ? html`<div class="muted stay-sub">${[x.location, x.notes].filter(Boolean).join(' · ')}</div>` : ''}
+            ${x.chosen || x.amountEur === null ? '' : (() => { const w = whatIf(trip, bookings, s.id, { inBudget: false, amountEur: x.amountEur }); return w && !w.unknown ? html`<div class="stay-sub ${w.over ? 'danger-text' : 'muted'}">Si retenu : budget restant ${formatMoney(w.after)}${w.over ? ' (dépasse le budget)' : ''}</div>` : ''; })()}
           </td>
           <td data-label="Prix" class="num">${x.amountEur === null ? html`<span class="muted">À renseigner</span>` : html`<strong>${formatMoney(x.amountEur)}</strong>${foreign ? html`<div class="muted stay-sub">${formatCurrency(x.amount, x.currency)}</div>` : ''}`}</td>
           <td data-label="Par nuit" class="num">${perNight === null ? '—' : formatMoney(perNight)}</td>
@@ -241,6 +284,7 @@ export async function mount(el) {
               <button type="button" class="btn btn-soft btn-sm" data-budget="${b.id}" data-in="${b.inBudget === false ? '1' : '0'}">${b.inBudget === false ? 'Attacher au budget' : 'Détacher du budget'}</button>
               <button type="button" class="btn btn-ghost btn-sm" data-detach="${b.id}" aria-label="Retirer ${b.name} de la destination">Retirer</button></li>`)}</ul>`
             : html`<p class="muted">Aucune réservation rattachée. Choisissez la destination dans le formulaire d'une réservation, ou rattachez-en une ci-dessous.</p>`}
+          <div class="attach-row"><button type="button" class="btn btn-soft btn-sm" data-new-booking="${s.id}">${icon('plus', 14)}Ajouter une réservation ici</button></div>
           ${bookings.filter((b) => !b.stopId && b.status !== 'annule').length ? html`
             <div class="attach-row"><label class="sr-only" for="attach-sel">Rattacher une réservation</label>
               <select id="attach-sel" class="select">${bookings.filter((b) => !b.stopId && b.status !== 'annule').map((b) => html`<option value="${b.id}">${b.name}</option>`)}</select>
@@ -368,6 +412,9 @@ export async function mount(el) {
     }
     if (d.choose) { guard(async () => { await api.chooseStay(d.choose); toast('Logement retenu : réservation ajoutée.'); await load(); }); return; }
     if (d.unchoose) { guard(async () => { await api.unchooseStay(d.unchoose); toast('Choix retiré.'); await load(); }); return; }
+    if (d.newBooking) { try { sessionStorage.setItem('tp-new-booking', d.newBooking); } catch { /* ignoré */ } setActiveTripId(trip.id); location.hash = '#/reservations'; return; }
+    if (d.uchoose) { guard(async () => { const r = await api.chooseStay(d.uchoose); toast(r?.detached?.length ? `Logement retenu. Détaché du budget : ${r.detached.join(', ')}.` : 'Logement retenu : réservation ajoutée.'); await load(); }); return; }
+    if (d.ubudget) { guard(async () => { const r = await api.setBookingBudget(d.ubudget, d.uin === '1'); toast(r.detached?.length ? `Attaché au budget. Détaché : ${r.detached.join(', ')}.` : d.uin === '1' ? 'Attaché au budget.' : 'Détaché du budget : le logement reste dans la liste.'); await load(); }); return; }
     if (d.budget) { guard(async () => { const r = await api.setBookingBudget(d.budget, d.in === '1'); toast(r.detached?.length ? `Attaché au budget. Détaché : ${r.detached.join(', ')}.` : d.in === '1' ? 'Attaché au budget.' : 'Détaché du budget : la réservation reste dans la liste.'); await load(); }); return; }
     if (d.detach) { guard(async () => { await api.setBookingStop(d.detach, null); await load(); }); return; }
     if (d.attach !== undefined) {
