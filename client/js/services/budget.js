@@ -26,7 +26,7 @@ const sum = (list, pick) => list.reduce((total, item) => total + pick(item), 0);
 const paidOf = (booking) => sum(booking.payments ?? [], (p) => p.amountEur);
 
 export function summarize(trip, bookings) {
-  const active = bookings.filter((b) => b.status !== 'annule');
+  const active = bookings.filter((b) => b.status !== 'annule' && b.inBudget !== false); // « détaché du budget » : listé mais non compté
   const priced = active.filter((b) => typeof b.amountEur === 'number');
 
   const forecast = sum(priced, (b) => b.amountEur);

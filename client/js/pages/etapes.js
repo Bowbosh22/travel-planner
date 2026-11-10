@@ -30,7 +30,7 @@ function timing(s, today) {
 
 const stopBudget = (bookings, stopId) => {
   const mine = bookings.filter((b) => b.stopId === stopId && b.status !== 'annule');
-  return { items: mine, total: mine.reduce((n, b) => n + (typeof b.amountEur === 'number' ? b.amountEur : 0), 0) };
+  return { items: mine, total: mine.filter((b) => b.inBudget !== false).reduce((n, b) => n + (typeof b.amountEur === 'number' ? b.amountEur : 0), 0) };
 };
 
 // Prix croissant, sans prix à la fin (le serveur trie déjà ainsi ; on garde cet ordre après chaque modification locale).
@@ -237,8 +237,9 @@ export async function mount(el) {
       <div class="stop-detail-grid">
         <section class="card"><h2 class="section-title in-card">Carte</h2><div id="stop-map" class="stop-map stop-map-sm"></div></section>
         <section class="card"><h2 class="section-title in-card">Réservations de la destination</h2>
-          ${bud.items.length ? html`<ul class="stop-bookings">${bud.items.map((b) => html`<li><span>${b.name}</span><strong>${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</strong>
-              <button type="button" class="btn btn-ghost btn-sm" data-detach="${b.id}" aria-label="Détacher ${b.name} de la destination">Détacher</button></li>`)}</ul>`
+          ${bud.items.length ? html`<ul class="stop-bookings">${bud.items.map((b) => html`<li class="${b.inBudget === false ? 'is-off-budget' : ''}"><span>${b.name}${b.inBudget === false ? html` <span class="badge badge-off">Hors budget</span>` : ''}</span><strong>${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</strong>
+              <button type="button" class="btn btn-soft btn-sm" data-budget="${b.id}" data-in="${b.inBudget === false ? '1' : '0'}">${b.inBudget === false ? 'Attacher au budget' : 'Détacher du budget'}</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-detach="${b.id}" aria-label="Retirer ${b.name} de la destination">Retirer</button></li>`)}</ul>`
             : html`<p class="muted">Aucune réservation rattachée. Choisissez la destination dans le formulaire d'une réservation, ou rattachez-en une ci-dessous.</p>`}
           ${bookings.filter((b) => !b.stopId && b.status !== 'annule').length ? html`
             <div class="attach-row"><label class="sr-only" for="attach-sel">Rattacher une réservation</label>
@@ -367,6 +368,7 @@ export async function mount(el) {
     }
     if (d.choose) { guard(async () => { await api.chooseStay(d.choose); toast('Logement retenu : réservation ajoutée.'); await load(); }); return; }
     if (d.unchoose) { guard(async () => { await api.unchooseStay(d.unchoose); toast('Choix retiré.'); await load(); }); return; }
+    if (d.budget) { guard(async () => { const r = await api.setBookingBudget(d.budget, d.in === '1'); toast(r.detached?.length ? `Attaché au budget. Détaché : ${r.detached.join(', ')}.` : d.in === '1' ? 'Attaché au budget.' : 'Détaché du budget : la réservation reste dans la liste.'); await load(); }); return; }
     if (d.detach) { guard(async () => { await api.setBookingStop(d.detach, null); await load(); }); return; }
     if (d.attach !== undefined) {
       const id = el.querySelector('#attach-sel')?.value;

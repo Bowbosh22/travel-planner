@@ -28,7 +28,7 @@ function tripOut(r, today = todayIso(), ctx = {}) {
 
 const BOOKING_SELECT = `
   SELECT b.id, b.trip_id, b.category, b.name, b.amount_eur, b.status, b.source_url, b.starts_on, b.ends_on, b.location,
-    b.currency, b.original_amount, b.fx_rate, to_char(b.fx_date, 'YYYY-MM-DD') AS fx_date, b.fx_source, b.lat, b.lng, b.geo_query, b.stop_id, b.created_at,
+    b.currency, b.original_amount, b.fx_rate, to_char(b.fx_date, 'YYYY-MM-DD') AS fx_date, b.fx_source, b.lat, b.lng, b.geo_query, b.stop_id, b.created_at, b.in_budget,
     COALESCE(json_agg(json_build_object('id', p.id, 'date', to_char(p.paid_on, 'YYYY-MM-DD'),
       'amount', p.original_amount::float8, 'amountEur', p.amount_eur::float8)
       ORDER BY p.paid_on, p.created_at) FILTER (WHERE p.id IS NOT NULL), '[]') AS payments
@@ -40,7 +40,7 @@ const bookingOut = (r) => ({
   id: r.id, tripId: r.trip_id, category: r.category, name: r.name, status: r.status,
   amount: r.original_amount, currency: r.currency, amountEur: r.amount_eur,
   fxRate: r.fx_rate, fxDate: r.fx_date, fxSource: r.fx_source,
-  stopId: r.stop_id ?? null, createdAt: r.created_at,
+  stopId: r.stop_id ?? null, createdAt: r.created_at, inBudget: r.in_budget !== false,
   sourceUrl: r.source_url, startsOn: r.starts_on, endsOn: r.ends_on, location: r.location, payments: r.payments,
   // Coordonnées valables seulement pour le lieu actuel ; geoDone = le lieu a déjà été recherché (même sans résultat).
   lat: r.location && r.geo_query === r.location ? r.lat : null,
@@ -272,10 +272,10 @@ export function createTripRoutes(pool, fx, images) {
       const amountEur = v.amount === null ? null : toEur(v.amount, r.rate);
       if (amountEur !== null && amountEur > 9_999_999_999) return bad(res, 'Le montant converti est trop élevé.');
       const { rows } = await pool.query(
-        `INSERT INTO bookings (trip_id, category, name, amount_eur, status, source_url, starts_on, ends_on, location, currency, original_amount, fx_rate, fx_date, fx_source, stop_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+        `INSERT INTO bookings (trip_id, category, name, amount_eur, status, source_url, starts_on, ends_on, location, currency, original_amount, fx_rate, fx_date, fx_source, stop_id, in_budget)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
         [req.params.id, v.category, v.name, amountEur, v.status, v.sourceUrl ?? null, v.startsOn ?? null, v.endsOn ?? null, v.location ?? null,
-          v.currency, v.amount, r.rate, r.date, r.source, v.stopId ?? null]
+          v.currency, v.amount, r.rate, r.date, r.source, v.stopId ?? null, v.inBudget !== false]
       );
       res.status(201).json({ booking: await loadBooking(rows[0].id, req.user.id) });
     } catch (err) {
@@ -314,8 +314,8 @@ export function createTripRoutes(pool, fx, images) {
       await withTx(async (client) => {
         await client.query(
           `UPDATE bookings SET category=$2, name=$3, amount_eur=$4, status=$5, source_url=$6, starts_on=$7, ends_on=$8, location=$9,
-             currency=$10, original_amount=$11, fx_rate=$12, fx_date=$13, fx_source=$14, stop_id=$15 WHERE id=$1`,
-          [req.params.id, v.category, v.name, amountEur, v.status, pick('sourceUrl'), startsOn, endsOn, pick('location'), v.currency, v.amount, r.rate, r.date, r.source, stopId]
+             currency=$10, original_amount=$11, fx_rate=$12, fx_date=$13, fx_source=$14, stop_id=$15, in_budget=$16 WHERE id=$1`,
+          [req.params.id, v.category, v.name, amountEur, v.status, pick('sourceUrl'), startsOn, endsOn, pick('location'), v.currency, v.amount, r.rate, r.date, r.source, stopId, v.inBudget === undefined ? current.inBudget : v.inBudget]
         );
         await recomputePaymentsEur(client, req.params.id);
       });
@@ -324,6 +324,27 @@ export function createTripRoutes(pool, fx, images) {
       if (err instanceof FxError) return fxFail(res, err);
       next(err);
     }
+  });
+
+  // Attacher / détacher du budget : la réservation reste dans la liste, mais ne compte plus dans les totaux.
+  // En rattachant un logement lié à une destination, les autres logements de cette destination sont détachés (changement de logement).
+  router.put('/bookings/:id/budget', async (req, res, next) => {
+    try {
+      if (typeof req.body?.inBudget !== 'boolean') return bad(res, 'Valeur invalide.');
+      const current = await loadBooking(req.params.id, req.user.id);
+      if (!current) return notFound(res);
+      let detached = [];
+      await withTx(async (client) => {
+        await client.query('UPDATE bookings SET in_budget=$2 WHERE id=$1', [req.params.id, req.body.inBudget]);
+        if (req.body.inBudget && current.category === 'logement' && current.stopId) {
+          const { rows } = await client.query(
+            `UPDATE bookings SET in_budget=false WHERE stop_id=$1 AND category='logement' AND in_budget AND id<>$2 AND status<>'annule' RETURNING name`,
+            [current.stopId, req.params.id]);
+          detached = rows.map((x) => x.name);
+        }
+      });
+      res.json({ booking: await loadBooking(req.params.id, req.user.id), detached });
+    } catch (err) { next(err); }
   });
 
   router.delete('/bookings/:id', async (req, res, next) => {

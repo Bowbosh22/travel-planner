@@ -26,7 +26,7 @@ export async function mount(el) {
   }
 
   const all = await api.listBookings(trip.id);
-  const bookings = all.filter((b) => b.status !== 'annule');
+  const bookings = all.filter((b) => b.status !== 'annule' && b.inBudget !== false);
   let sc = { budgetEur: trip.budgetEur, excluded: new Set(), overrides: {}, extras: [], pct: 0 };
   let seq = 0;
   const cats = CATEGORIES.filter((c) => bookings.some((b) => b.category === c.id));

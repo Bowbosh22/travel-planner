@@ -36,6 +36,7 @@ const bookingForm = (b = {}, currencies = [], stops = []) => html`
       <select class="select full" id="b-stop" name="stopId"><option value="">Aucune</option>
         ${stops.map((s) => html`<option value="${s.id}" ${b.stopId === s.id ? raw('selected') : ''}>${s.name} · ${formatShortDate(s.startDate)} – ${formatShortDate(s.endDate)}</option>`)}
       </select></div>` : ''}
+    <label class="check span-2"><input type="checkbox" name="inBudget" ${b.inBudget === false ? '' : raw('checked')}> Compter dans le budget <span class="opt">(décochez pour garder une piste sans l'ajouter au budget)</span></label>
     <div class="field span-2"><label for="b-url">Lien <span class="opt">(facultatif)</span></label><input class="input" id="b-url" name="sourceUrl" type="url" value="${b.sourceUrl ?? ''}" maxlength="500" placeholder="https://..."></div>
   </div>`;
 
@@ -61,9 +62,9 @@ export async function mount(el) {
     const pct = b.amount ? Math.min((paid / b.amount) * 100, 100) : 0;
     const money = (n) => formatCurrency(n, b.currency);
     return html`
-      <li class="booking ${b.status === 'annule' ? 'is-cancelled' : ''}" data-id="${b.id}">
+      <li class="booking ${b.status === 'annule' ? 'is-cancelled' : ''} ${b.inBudget === false ? 'is-off-budget' : ''}" data-id="${b.id}">
         <div class="booking-main">
-          <div class="booking-name">${b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span>${stopName(b) ? html`<span class="badge badge-stop">${stopName(b)}</span>` : ''}</div>
+          <div class="booking-name">${b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span>${stopName(b) ? html`<span class="badge badge-stop">${stopName(b)}</span>` : ''}${b.inBudget === false ? html`<span class="badge badge-off">Hors budget</span>` : ''}</div>
           ${b.location || b.startsOn || b.sourceUrl ? html`<div class="booking-sub muted">${[b.location, b.startsOn ? (b.endsOn && b.endsOn !== b.startsOn ? `${formatLongDate(b.startsOn)} → ${formatLongDate(b.endsOn)}` : formatLongDate(b.startsOn)) : null].filter(Boolean).join(' · ')}${b.sourceUrl ? html`${b.location || b.startsOn ? ' · ' : ''}<a class="src-link" href="${b.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow">Voir le lien</a>` : ''}</div>` : ''}
           ${b.amount === null
             ? html`<div class="muted booking-sub">Prix à renseigner</div>`
@@ -74,6 +75,7 @@ export async function mount(el) {
         <div class="booking-amount">${b.amount === null ? '—' : money(b.amount)}${foreign && b.amount !== null ? html`<small>≈ ${formatMoney(b.amountEur)}</small>` : ''}</div>
         <div class="row-actions">
           <button type="button" class="btn btn-soft btn-sm" data-act="payments">Paiements</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="budget">${b.inBudget === false ? 'Attacher au budget' : 'Détacher du budget'}</button>
           <button type="button" class="btn btn-ghost btn-sm" data-act="edit">Modifier</button>
           <button type="button" class="btn btn-ghost btn-sm" data-act="duplicate">Dupliquer</button>
           <button type="button" class="btn btn-ghost btn-sm danger-text" data-act="delete">Supprimer</button>
@@ -83,11 +85,13 @@ export async function mount(el) {
 
   let filter = 'all'; // filtre par catégorie (affichage seulement)
   const SORTS = { category: 'Par catégorie', stop: 'Par mini destination', addedDesc: 'Ajout : le plus récent', addedAsc: 'Ajout : le plus ancien', dateAsc: 'Date : la plus proche', dateDesc: 'Date : la plus lointaine', priceAsc: 'Prix : du plus bas', priceDesc: 'Prix : du plus haut' };
-  const opts = { sort: 'category', stop: 'all', from: '', to: '', min: '', max: '' }; // tri et filtres date / prix (affichage seulement)
+  const opts = { sort: 'category', budget: 'all', stop: 'all', from: '', to: '', min: '', max: '' }; // tri et filtres date / prix (affichage seulement)
   const num = (v) => { const n = Number(String(v).replace(',', '.')); return String(v).trim() !== '' && Number.isFinite(n) ? n : null; };
-  const hasOpts = () => Boolean(opts.stop !== 'all' || opts.from || opts.to || opts.min !== '' || opts.max !== '');
+  const hasOpts = () => Boolean(opts.budget !== 'all' || opts.stop !== 'all' || opts.from || opts.to || opts.min !== '' || opts.max !== '');
   // Les prix sont comparés en euros. Sans date ou sans prix, la réservation n'apparaît pas dès qu'on filtre sur ce critère.
   const passes = (b) => {
+    if (opts.budget === 'in' && b.inBudget === false) return false;
+    if (opts.budget === 'out' && b.inBudget !== false) return false;
     if (opts.stop === 'none' && b.stopId) return false;
     if (opts.stop !== 'all' && opts.stop !== 'none' && b.stopId !== opts.stop) return false;
     const min = num(opts.min); const max = num(opts.max);
@@ -137,6 +141,7 @@ export async function mount(el) {
         </div>
       </header>
       ${budgetBanner(trip.id, s)}
+      ${bookings.some((b) => b.inBudget === false && b.status !== 'annule') ? html`<p class="hint off-note">${bookings.filter((b) => b.inBudget === false && b.status !== 'annule').length} réservation(s) hors budget (pistes gardées en réserve) : non comptées ci-dessous.</p>` : ''}
       <section class="card summary-strip" aria-label="Résumé">
         <div><div class="metric-label">Prévisionnel</div><strong>${formatEUR(s.forecast)}</strong></div>
         <div><div class="metric-label">Payé</div><strong>${formatEUR(s.paid)}</strong></div>
@@ -151,6 +156,8 @@ export async function mount(el) {
         <section class="card sort-bar" aria-label="Trier et filtrer">
           <div class="field"><label for="f-sort">Trier</label>
             <select class="select" id="f-sort" data-opt="sort">${Object.entries(SORTS).map(([id, label]) => html`<option value="${id}" ${opts.sort === id ? raw('selected') : ''}>${label}</option>`)}</select></div>
+          <div class="field"><label for="f-budget">Budget</label>
+            <select class="select" id="f-budget" data-opt="budget"><option value="all" ${opts.budget === 'all' ? raw('selected') : ''}>Tout</option><option value="in" ${opts.budget === 'in' ? raw('selected') : ''}>Dans le budget</option><option value="out" ${opts.budget === 'out' ? raw('selected') : ''}>Hors budget</option></select></div>
           ${stops.length ? html`<div class="field"><label for="f-stop">Mini destination</label>
             <select class="select" id="f-stop" data-opt="stop"><option value="all" ${opts.stop === 'all' ? raw('selected') : ''}>Toutes</option><option value="none" ${opts.stop === 'none' ? raw('selected') : ''}>Sans destination</option>
               ${stops.map((s) => html`<option value="${s.id}" ${opts.stop === s.id ? raw('selected') : ''}>${s.name}</option>`)}</select></div>` : ''}
@@ -160,7 +167,7 @@ export async function mount(el) {
           <div class="field"><label for="f-max">Prix max (€)</label><input class="input" id="f-max" inputmode="decimal" data-opt="max" value="${opts.max}" placeholder="∞"></div>
           ${hasOpts() ? html`<button type="button" class="btn btn-ghost btn-sm" data-reset-opts>Effacer les filtres</button>` : ''}
         </section>
-        ${fs ? html`<section class="card filter-total" aria-live="polite"><strong>${[filter === 'all' ? null : CATEGORIES.find((c) => c.id === filter)?.label, hasOpts() ? 'Filtres date / prix' : null].filter(Boolean).join(' · ')} · ${shown.length} sur ${bookings.length}</strong>
+        ${fs ? html`<section class="card filter-total" aria-live="polite"><strong>${[filter === 'all' ? null : CATEGORIES.find((c) => c.id === filter)?.label, hasOpts() ? 'Filtres' : null].filter(Boolean).join(' · ')} · ${shown.length} sur ${bookings.length}</strong>
           <span>${formatEUR(fs.forecast)} prévus</span><span>${formatEUR(fs.paid)} payés</span><span>${formatEUR(fs.toPay)} restent à payer</span>
           <span class="muted">${s.forecast > 0 ? formatPercent((fs.forecast / s.forecast) * 100) : '0 %'} des dépenses du voyage</span></section>` : ''}` : ''}
       ${bookings.length === 0 ? html`
@@ -179,7 +186,7 @@ export async function mount(el) {
     render();
   };
 
-  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, ...amountPayload(v), location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl, ...(v.stopId !== undefined ? { stopId: v.stopId || null } : {}) });
+  const payload = (v) => ({ name: v.name, category: v.category, status: v.status, ...amountPayload(v), location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl, ...(v.stopId !== undefined ? { stopId: v.stopId || null } : {}), inBudget: v.inBudget === 'on' });
 
   const openBookingForm = async (existing) => openDialog({
     title: existing ? 'Modifier la réservation' : 'Nouvelle réservation',
@@ -240,7 +247,7 @@ export async function mount(el) {
   const onClick = (e) => {
     const f = e.target.closest('[data-filter]');
     if (f) { filter = f.dataset.filter; render(); el.querySelector(`[data-filter="${filter}"]`)?.focus(); return; }
-    if (e.target.closest('[data-reset-opts]')) { Object.assign(opts, { stop: 'all', from: '', to: '', min: '', max: '' }); render(); return; }
+    if (e.target.closest('[data-reset-opts]')) { Object.assign(opts, { budget: 'all', stop: 'all', from: '', to: '', min: '', max: '' }); render(); return; }
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset.id;
@@ -249,9 +256,13 @@ export async function mount(el) {
       case 'new': return openBookingForm();
       case 'import': return openImport();
       case 'edit': return openBookingForm(b);
+      case 'budget':
+        return api.setBookingBudget(id, b.inBudget === false)
+          .then((r) => { toast(r.detached?.length ? `Attaché au budget. Détaché : ${r.detached.join(', ')}.` : b.inBudget === false ? 'Attaché au budget.' : 'Détaché du budget : la réservation reste dans la liste.'); return load(); })
+          .catch((err) => toast(err.message));
       case 'payments': return openPayments(id);
       case 'duplicate':
-        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amount: b.amount, currency: b.currency, location: b.location, startsOn: b.startsOn, endsOn: b.endsOn, sourceUrl: b.sourceUrl, ...(b.stopId ? { stopId: b.stopId } : {}) })
+        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amount: b.amount, currency: b.currency, location: b.location, startsOn: b.startsOn, endsOn: b.endsOn, sourceUrl: b.sourceUrl, ...(b.stopId ? { stopId: b.stopId } : {}), inBudget: b.inBudget })
           .then(() => { toast('Réservation dupliquée (sans paiement).'); return load(); })
           .catch((err) => toast(err.message));
       case 'delete':

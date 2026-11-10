@@ -71,6 +71,7 @@ function reviewStep(result, trips, activeId, currencies, stops = []) {
       <div class="field"><label for="i-status">Statut</label>
         <select class="select full" id="i-status" name="status">${Object.entries(STATUS).map(([id, label]) => html`<option value="${id}" ${id === 'a_reserver' ? raw('selected') : ''}>${label}</option>`)}</select></div>
       ${amountFieldHtml(currencies, initial)}
+      <label class="check span-2"><input type="checkbox" name="inBudget" checked> Compter dans le budget <span class="opt">(décochez pour garder cette piste sans l'ajouter au budget)</span></label>
       ${prefilled ? html`<p class="hint span-2">Prix ${prefilled}</p>` : ''}
       ${priceNote ? html`<p class="hint warn span-2">${priceNote}</p>` : ''}
       <div class="field span-2"><label for="i-loc">Lieu ${tag(f.location)}</label><input class="input" id="i-loc" name="location" value="${f.location ?? ''}" maxlength="200"></div>
@@ -164,7 +165,7 @@ export async function openImport({ capture, sharedUrl } = {}) {
         name: v.name, category: v.category, status: v.status,
         ...amountPayload(v),
         location: v.location, startsOn: v.startsOn, endsOn: v.endsOn, sourceUrl: v.sourceUrl,
-        ...(v.stopId ? { stopId: v.stopId } : {}),
+        ...(v.stopId ? { stopId: v.stopId } : {}), inBudget: v.inBudget === 'on',
       };
       await api.createBooking(v.tripId, payload);
       setActiveTripId(v.tripId);

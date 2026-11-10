@@ -733,7 +733,7 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 .paste-btn { margin: 8px 0 4px; width: 100%; }
 
 /* Réservations : tri et filtres date / prix */
-.sort-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 12px; align-items: end; padding: 12px 18px; margin-bottom: 14px; }
+.sort-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 12px; align-items: end; padding: 12px 18px; margin-bottom: 14px; }
 .sort-bar .field { margin: 0; }
 .sort-bar .select, .sort-bar .input { width: 100%; }
 @media (max-width: 640px) { .sort-bar { grid-template-columns: 1fr 1fr; } .sort-bar .field:first-child { grid-column: 1 / -1; } }
@@ -768,3 +768,9 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 .dp-day:focus-visible { outline: none; }
 .dp-day:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+
+/* Réservations détachées du budget */
+.badge-off { background: transparent; color: var(--muted); border: 1px dashed var(--muted); margin-left: 6px; }
+.booking.is-off-budget .booking-amount, .stop-bookings li.is-off-budget strong { text-decoration: line-through; opacity: .6; }
+.booking.is-off-budget { opacity: .85; }
+.off-note { margin: 0 0 10px; }

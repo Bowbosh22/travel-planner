@@ -965,3 +965,25 @@ test('demandes d\'accès : inscriptions fermées, le propriétaire approuve ou r
     assert.equal((await client().post('/api/auth/login', { email: 'refus@test.fr', password: 'motdepasse-long' })).status, 401);
   } finally { delete process.env.ALLOW_REGISTRATION; }
 });
+
+test('budget : détacher / attacher une réservation, changement de logement', { skip }, async () => {
+  const c = client();
+  await c.post('/api/auth/login', { email: 'ana@test.fr', password: 'motdepasse-long' });
+  const t = await freshTrip(c);
+  const stop = (await c.post(`/api/trips/${t.id}/stops`, { name: 'Langkawi', startDate: '2026-12-12', endDate: '2026-12-14' })).body.stop;
+  const mk = async (name, extra = {}) => (await c.post(`/api/trips/${t.id}/bookings`, { name, category: 'logement', status: 'a_reserver', amount: '200', currency: 'EUR', stopId: stop.id, ...extra })).body.booking;
+  const a = await mk('Villa A'); const b = await mk('Villa B', { inBudget: false });
+  assert.equal(a.inBudget, true); assert.equal(b.inBudget, false, 'créée hors budget');
+  assert.equal((await c.put(`/api/bookings/${a.id}/budget`, { inBudget: 'oui' })).status, 400);
+  // rattacher B : A (même destination, logement) est détaché, rien n'est supprimé
+  const r = (await c.put(`/api/bookings/${b.id}/budget`, { inBudget: true })).body;
+  assert.equal(r.booking.inBudget, true); assert.deepEqual(r.detached, ['Villa A']);
+  const list = (await c.get(`/api/trips/${t.id}/bookings`)).body.bookings;
+  assert.equal(list.find((x) => x.id === a.id).inBudget, false);
+  assert.equal(list.length, 2, 'aucune réservation supprimée');
+  const intruder = client(); await signup(intruder, `budget-intruder-${Date.now()}@test.fr`);
+  assert.equal((await intruder.put(`/api/bookings/${a.id}/budget`, { inBudget: true })).status, 404);
+  // modifier une réservation sans préciser inBudget conserve son état
+  const up = (await c.put(`/api/bookings/${a.id}`, { name: 'Villa A+', category: 'logement', status: 'a_reserver', amount: '210', currency: 'EUR' })).body.booking;
+  assert.equal(up.inBudget, false);
+});

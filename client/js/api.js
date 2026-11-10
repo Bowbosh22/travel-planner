@@ -146,6 +146,7 @@ export const api = {
   updateStop: async (id, s) => (await request('PUT', `/stops/${id}`, s)).stop,
   deleteStop: (id) => request('DELETE', `/stops/${id}`),
   geocodeStop: async (id) => (await request('POST', `/stops/${id}/geocode`)).stop,
+  setBookingBudget: (bookingId, inBudget) => request('PUT', `/bookings/${bookingId}/budget`, { inBudget }),
   setBookingStop: (bookingId, stopId) => request('PUT', `/bookings/${bookingId}/stop`, { stopId }),
   listStays: async (tripId) => (await request('GET', `/trips/${tripId}/stays`)).stays,
   createStay: async (stopId, s) => (await request('POST', `/stops/${stopId}/stays`, s)).stay,

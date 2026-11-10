@@ -103,7 +103,8 @@ export function validateBooking(body = {}) {
     if (currency === 'EUR') return { error: 'Pas de taux de change pour une réservation en euros.' };
     manualRate = n;
   }
-  return { value: { ...r.value, category: body.category, status, currency, manualRate, refreshRate: body.refreshRate === true } };
+  if (body.inBudget !== undefined && typeof body.inBudget !== 'boolean') return { error: 'Valeur « dans le budget » invalide.' };
+  return { value: { ...r.value, category: body.category, status, currency, manualRate, refreshRate: body.refreshRate === true, inBudget: body.inBudget } };
 }
 
 export function validatePayment(body = {}) {
