@@ -80,14 +80,42 @@ export async function mount(el) {
   };
 
   let filter = 'all'; // filtre par catégorie (affichage seulement)
+  const SORTS = { category: 'Par catégorie', dateAsc: 'Date : la plus proche', dateDesc: 'Date : la plus lointaine', priceAsc: 'Prix : du plus bas', priceDesc: 'Prix : du plus haut' };
+  const opts = { sort: 'category', from: '', to: '', min: '', max: '' }; // tri et filtres date / prix (affichage seulement)
+  const num = (v) => { const n = Number(String(v).replace(',', '.')); return String(v).trim() !== '' && Number.isFinite(n) ? n : null; };
+  const hasOpts = () => Boolean(opts.from || opts.to || opts.min !== '' || opts.max !== '');
+  // Les prix sont comparés en euros. Sans date ou sans prix, la réservation n'apparaît pas dès qu'on filtre sur ce critère.
+  const passes = (b) => {
+    const min = num(opts.min); const max = num(opts.max);
+    if (min !== null && !(b.amountEur !== null && b.amountEur >= min)) return false;
+    if (max !== null && !(b.amountEur !== null && b.amountEur <= max)) return false;
+    if (opts.from || opts.to) {
+      if (!b.startsOn) return false;
+      const end = b.endsOn || b.startsOn;
+      if (opts.from && end < opts.from) return false;
+      if (opts.to && b.startsOn > opts.to) return false;
+    }
+    return true;
+  };
+  // Valeurs manquantes toujours en dernier, quel que soit le sens du tri.
+  const cmp = (key, dir) => (a, b) => {
+    const x = key === 'date' ? a.startsOn : a.amountEur; const y = key === 'date' ? b.startsOn : b.amountEur;
+    if (x == null && y == null) return a.name.localeCompare(b.name, 'fr');
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return x === y ? a.name.localeCompare(b.name, 'fr') : (x < y ? -dir : dir);
+  };
   const render = () => {
     const s = summarize(trip, bookings);
     const present = CATEGORIES.map((c) => ({ ...c, n: bookings.filter((b) => b.category === c.id).length })).filter((c) => c.n);
     if (filter !== 'all' && !present.some((c) => c.id === filter)) filter = 'all'; // la catégorie filtrée n'existe plus
-    const shown = filter === 'all' ? bookings : bookings.filter((b) => b.category === filter);
-    const fs = filter === 'all' ? null : summarize(trip, shown);
+    const shown = (filter === 'all' ? bookings : bookings.filter((b) => b.category === filter)).filter(passes);
+    const filtered = filter !== 'all' || hasOpts();
+    const fs = filtered ? summarize(trip, shown) : null;
     announceBudget(trip.id, s);
-    const groups = CATEGORIES.map((c) => ({ ...c, items: shown.filter((b) => b.category === c.id) })).filter((g) => g.items.length);
+    const flat = opts.sort !== 'category';
+    const flatItems = flat ? [...shown].sort(cmp(opts.sort.startsWith('date') ? 'date' : 'price', opts.sort.endsWith('Desc') ? -1 : 1)) : [];
+    const groups = flat ? [] : CATEGORIES.map((c) => ({ ...c, items: shown.filter((b) => b.category === c.id) })).filter((g) => g.items.length);
     el.innerHTML = String(html`
       <header class="page-head">
         <div><h1>Réservations</h1><p>${bookings.length} au total pour ce voyage.</p></div>
@@ -110,13 +138,24 @@ export async function mount(el) {
           <button type="button" class="chip-btn" data-filter="all" aria-pressed="${filter === 'all'}">Toutes <span class="chip-n">${bookings.length}</span></button>
           ${present.map((c) => html`<button type="button" class="chip-btn" data-filter="${c.id}" aria-pressed="${filter === c.id}">${c.label} <span class="chip-n">${c.n}</span></button>`)}
         </div>
-        ${fs ? html`<section class="card filter-total" aria-live="polite"><strong>${CATEGORIES.find((c) => c.id === filter)?.label}</strong>
+        <section class="card sort-bar" aria-label="Trier et filtrer">
+          <div class="field"><label for="f-sort">Trier</label>
+            <select class="select" id="f-sort" data-opt="sort">${Object.entries(SORTS).map(([id, label]) => html`<option value="${id}" ${opts.sort === id ? raw('selected') : ''}>${label}</option>`)}</select></div>
+          <div class="field"><label for="f-from">Du</label><input class="input" id="f-from" type="date" data-opt="from" value="${opts.from}"></div>
+          <div class="field"><label for="f-to">Au</label><input class="input" id="f-to" type="date" data-opt="to" value="${opts.to}"></div>
+          <div class="field"><label for="f-min">Prix min (€)</label><input class="input" id="f-min" inputmode="decimal" data-opt="min" value="${opts.min}" placeholder="0"></div>
+          <div class="field"><label for="f-max">Prix max (€)</label><input class="input" id="f-max" inputmode="decimal" data-opt="max" value="${opts.max}" placeholder="∞"></div>
+          ${hasOpts() ? html`<button type="button" class="btn btn-ghost btn-sm" data-reset-opts>Effacer les filtres</button>` : ''}
+        </section>
+        ${fs ? html`<section class="card filter-total" aria-live="polite"><strong>${[filter === 'all' ? null : CATEGORIES.find((c) => c.id === filter)?.label, hasOpts() ? 'Filtres date / prix' : null].filter(Boolean).join(' · ')} · ${shown.length} sur ${bookings.length}</strong>
           <span>${formatEUR(fs.forecast)} prévus</span><span>${formatEUR(fs.paid)} payés</span><span>${formatEUR(fs.toPay)} restent à payer</span>
           <span class="muted">${s.forecast > 0 ? formatPercent((fs.forecast / s.forecast) * 100) : '0 %'} des dépenses du voyage</span></section>` : ''}` : ''}
       ${bookings.length === 0 ? html`
         <section class="card empty"><h2>Aucune réservation</h2><p>Ajoutez un vol, un hôtel ou une activité. Le prix peut rester vide s'il n'est pas encore connu.</p>
           <button type="button" class="btn btn-primary" data-act="new">${icon('plus', 16)}Ajouter une réservation</button></section>` : ''}
+      ${bookings.length > 0 && shown.length === 0 ? html`<section class="card empty"><p>Aucune réservation ne correspond à ces filtres.</p></section>` : ''}
       <div class="stack">
+        ${flat && flatItems.length ? html`<section class="card"><ul class="booking-list">${flatItems.map(row)}</ul></section>` : ''}
         ${groups.map((g) => html`<section class="card"><h2 class="section-title in-card">${g.label}</h2><ul class="booking-list">${g.items.map(row)}</ul></section>`)}
       </div>`);
   };
@@ -187,6 +226,7 @@ export async function mount(el) {
   const onClick = (e) => {
     const f = e.target.closest('[data-filter]');
     if (f) { filter = f.dataset.filter; render(); el.querySelector(`[data-filter="${filter}"]`)?.focus(); return; }
+    if (e.target.closest('[data-reset-opts]')) { Object.assign(opts, { from: '', to: '', min: '', max: '' }); render(); return; }
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset.id;
@@ -209,6 +249,13 @@ export async function mount(el) {
     }
   };
   const onChange = (e) => {
+    const o = e.target.dataset?.opt;
+    if (o) {
+      opts[o] = e.target.value;
+      // Rendu différé : le champ suivant (Tab) a alors déjà le focus, on le lui rend après l'actualisation.
+      setTimeout(() => { const id = el.contains(document.activeElement) ? document.activeElement.id : ''; render(); if (id) el.querySelector(`#${id}`)?.focus(); }, 0);
+      return;
+    }
     if (e.target.id !== 'trip-select') return;
     trip = trips.find((t) => t.id === e.target.value);
     setActiveTripId(trip.id);
