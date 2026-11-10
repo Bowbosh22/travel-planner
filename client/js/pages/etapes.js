@@ -280,7 +280,7 @@ export async function mount(el) {
       <div class="stop-detail-grid">
         <section class="card"><h2 class="section-title in-card">Carte</h2><div id="stop-map" class="stop-map stop-map-sm"></div></section>
         <section class="card"><h2 class="section-title in-card">Réservations de la destination</h2>
-          ${bud.items.length ? html`<ul class="stop-bookings">${bud.items.map((b) => html`<li class="${b.inBudget === false ? 'is-off-budget' : ''}"><span>${b.name}${b.inBudget === false ? html` <span class="badge badge-off">Hors budget</span>` : ''}</span><strong>${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</strong>
+          ${bud.items.length ? html`<ul class="stop-bookings">${bud.items.map((b) => html`<li class="${b.inBudget === false ? 'is-off-budget' : ''}"><span>${b.sourceUrl ? html`<a class="name-link" href="${b.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow" title="Ouvrir le lien pour revérifier">${b.name}</a>` : b.name}${b.inBudget === false ? html` <span class="badge badge-off">Hors budget</span>` : ''}</span><strong>${b.amountEur === null ? '—' : formatMoney(b.amountEur)}</strong>
               <button type="button" class="btn btn-soft btn-sm" data-budget="${b.id}" data-in="${b.inBudget === false ? '1' : '0'}">${b.inBudget === false ? 'Attacher au budget' : 'Détacher du budget'}</button>
               <button type="button" class="btn btn-ghost btn-sm" data-detach="${b.id}" aria-label="Retirer ${b.name} de la destination">Retirer</button></li>`)}</ul>`
             : html`<p class="muted">Aucune réservation rattachée. Choisissez la destination dans le formulaire d'une réservation, ou rattachez-en une ci-dessous.</p>`}

@@ -783,3 +783,6 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 .lodging-table tr.lg-group th { padding: 14px 10px 8px; font-size: 14px; color: var(--text); border-bottom: 1px solid var(--border); }
 .lodging-table .lg-empty { padding: 8px 10px; }
 @media (max-width: 760px) { .lodging-table tr.lg-group, .lodging-table tr.lg-group th { display: block; width: 100%; } .lodging-table tr.lg-group { padding: 8px 0 0; border: 0; } .lodging-table .lg-empty { display: block; text-align: left; } }
+
+.name-link { color: inherit; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
+.name-link:hover { text-decoration-color: currentColor; }

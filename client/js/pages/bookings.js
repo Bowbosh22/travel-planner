@@ -65,7 +65,7 @@ export async function mount(el) {
     return html`
       <li class="booking ${b.status === 'annule' ? 'is-cancelled' : ''} ${b.inBudget === false ? 'is-off-budget' : ''}" data-id="${b.id}">
         <div class="booking-main">
-          <div class="booking-name">${b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span>${stopName(b) ? html`<span class="badge badge-stop">${stopName(b)}</span>` : ''}${b.inBudget === false ? html`<span class="badge badge-off">Hors budget</span>` : ''}</div>
+          <div class="booking-name">${b.sourceUrl ? html`<a class="name-link" href="${b.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow" title="Ouvrir le lien pour revérifier">${b.name}</a>` : b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span>${stopName(b) ? html`<span class="badge badge-stop">${stopName(b)}</span>` : ''}${b.inBudget === false ? html`<span class="badge badge-off">Hors budget</span>` : ''}</div>
           ${b.location || b.startsOn || b.sourceUrl ? html`<div class="booking-sub muted">${[b.location, b.startsOn ? (b.endsOn && b.endsOn !== b.startsOn ? `${formatLongDate(b.startsOn)} → ${formatLongDate(b.endsOn)}` : formatLongDate(b.startsOn)) : null].filter(Boolean).join(' · ')}${b.sourceUrl ? html`${b.location || b.startsOn ? ' · ' : ''}<a class="src-link" href="${b.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow">Voir le lien</a>` : ''}</div>` : ''}
           ${b.amount === null
             ? html`<div class="muted booking-sub">Prix à renseigner</div>`
