@@ -28,7 +28,7 @@ function tripOut(r, today = todayIso(), ctx = {}) {
 
 const BOOKING_SELECT = `
   SELECT b.id, b.trip_id, b.category, b.name, b.amount_eur, b.status, b.source_url, b.starts_on, b.ends_on, b.location,
-    b.currency, b.original_amount, b.fx_rate, to_char(b.fx_date, 'YYYY-MM-DD') AS fx_date, b.fx_source, b.lat, b.lng, b.geo_query, b.stop_id,
+    b.currency, b.original_amount, b.fx_rate, to_char(b.fx_date, 'YYYY-MM-DD') AS fx_date, b.fx_source, b.lat, b.lng, b.geo_query, b.stop_id, b.created_at,
     COALESCE(json_agg(json_build_object('id', p.id, 'date', to_char(p.paid_on, 'YYYY-MM-DD'),
       'amount', p.original_amount::float8, 'amountEur', p.amount_eur::float8)
       ORDER BY p.paid_on, p.created_at) FILTER (WHERE p.id IS NOT NULL), '[]') AS payments
@@ -40,7 +40,7 @@ const bookingOut = (r) => ({
   id: r.id, tripId: r.trip_id, category: r.category, name: r.name, status: r.status,
   amount: r.original_amount, currency: r.currency, amountEur: r.amount_eur,
   fxRate: r.fx_rate, fxDate: r.fx_date, fxSource: r.fx_source,
-  stopId: r.stop_id ?? null,
+  stopId: r.stop_id ?? null, createdAt: r.created_at,
   sourceUrl: r.source_url, startsOn: r.starts_on, endsOn: r.ends_on, location: r.location, payments: r.payments,
   // Coordonnées valables seulement pour le lieu actuel ; geoDone = le lieu a déjà été recherché (même sans résultat).
   lat: r.location && r.geo_query === r.location ? r.lat : null,

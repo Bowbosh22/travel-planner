@@ -32,7 +32,7 @@ const bookingForm = (b = {}, currencies = [], stops = []) => html`
     <div class="field span-2"><label for="b-loc">Lieu <span class="opt">(facultatif)</span></label><input class="input" id="b-loc" name="location" value="${b.location ?? ''}" maxlength="200"></div>
     <div class="field"><label for="b-start">Du</label><input class="input" id="b-start" name="startsOn" type="date" value="${b.startsOn ?? ''}"></div>
     <div class="field"><label for="b-end">Au</label><input class="input" id="b-end" name="endsOn" type="date" value="${b.endsOn ?? ''}"></div>
-    ${stops.length ? html`<div class="field span-2"><label for="b-stop">Destination <span class="opt">(facultatif)</span></label>
+    ${stops.length ? html`<div class="field span-2"><label for="b-stop">Mini destination <span class="opt">(où ranger cette réservation)</span></label>
       <select class="select full" id="b-stop" name="stopId"><option value="">Aucune</option>
         ${stops.map((s) => html`<option value="${s.id}" ${b.stopId === s.id ? raw('selected') : ''}>${s.name} · ${formatShortDate(s.startDate)} – ${formatShortDate(s.endDate)}</option>`)}
       </select></div>` : ''}
@@ -44,6 +44,7 @@ export async function mount(el) {
   const trips = await api.listTrips();
   let trip = trips.find((t) => t.id === getActiveTripId()) ?? trips[0] ?? null;
   let bookings = [];
+  let stops = []; // mini destinations du voyage affiché
 
   if (!trip) {
     el.innerHTML = String(html`
@@ -53,6 +54,7 @@ export async function mount(el) {
     return () => {};
   }
 
+  const stopName = (b) => stops.find((s) => s.id === b.stopId)?.name ?? '';
   const row = (b) => {
     const foreign = b.currency !== 'EUR';
     const paid = paidOrig(b);
@@ -61,7 +63,7 @@ export async function mount(el) {
     return html`
       <li class="booking ${b.status === 'annule' ? 'is-cancelled' : ''}" data-id="${b.id}">
         <div class="booking-main">
-          <div class="booking-name">${b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span></div>
+          <div class="booking-name">${b.name}<span class="badge badge-b-${b.status}">${STATUS[b.status]}</span>${stopName(b) ? html`<span class="badge badge-stop">${stopName(b)}</span>` : ''}</div>
           ${b.location || b.startsOn || b.sourceUrl ? html`<div class="booking-sub muted">${[b.location, b.startsOn ? (b.endsOn && b.endsOn !== b.startsOn ? `${formatLongDate(b.startsOn)} → ${formatLongDate(b.endsOn)}` : formatLongDate(b.startsOn)) : null].filter(Boolean).join(' · ')}${b.sourceUrl ? html`${b.location || b.startsOn ? ' · ' : ''}<a class="src-link" href="${b.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow">Voir le lien</a>` : ''}</div>` : ''}
           ${b.amount === null
             ? html`<div class="muted booking-sub">Prix à renseigner</div>`
@@ -80,12 +82,14 @@ export async function mount(el) {
   };
 
   let filter = 'all'; // filtre par catégorie (affichage seulement)
-  const SORTS = { category: 'Par catégorie', dateAsc: 'Date : la plus proche', dateDesc: 'Date : la plus lointaine', priceAsc: 'Prix : du plus bas', priceDesc: 'Prix : du plus haut' };
-  const opts = { sort: 'category', from: '', to: '', min: '', max: '' }; // tri et filtres date / prix (affichage seulement)
+  const SORTS = { category: 'Par catégorie', stop: 'Par mini destination', addedDesc: 'Ajout : le plus récent', addedAsc: 'Ajout : le plus ancien', dateAsc: 'Date : la plus proche', dateDesc: 'Date : la plus lointaine', priceAsc: 'Prix : du plus bas', priceDesc: 'Prix : du plus haut' };
+  const opts = { sort: 'category', stop: 'all', from: '', to: '', min: '', max: '' }; // tri et filtres date / prix (affichage seulement)
   const num = (v) => { const n = Number(String(v).replace(',', '.')); return String(v).trim() !== '' && Number.isFinite(n) ? n : null; };
-  const hasOpts = () => Boolean(opts.from || opts.to || opts.min !== '' || opts.max !== '');
+  const hasOpts = () => Boolean(opts.stop !== 'all' || opts.from || opts.to || opts.min !== '' || opts.max !== '');
   // Les prix sont comparés en euros. Sans date ou sans prix, la réservation n'apparaît pas dès qu'on filtre sur ce critère.
   const passes = (b) => {
+    if (opts.stop === 'none' && b.stopId) return false;
+    if (opts.stop !== 'all' && opts.stop !== 'none' && b.stopId !== opts.stop) return false;
     const min = num(opts.min); const max = num(opts.max);
     if (min !== null && !(b.amountEur !== null && b.amountEur >= min)) return false;
     if (max !== null && !(b.amountEur !== null && b.amountEur <= max)) return false;
@@ -99,7 +103,8 @@ export async function mount(el) {
   };
   // Valeurs manquantes toujours en dernier, quel que soit le sens du tri.
   const cmp = (key, dir) => (a, b) => {
-    const x = key === 'date' ? a.startsOn : a.amountEur; const y = key === 'date' ? b.startsOn : b.amountEur;
+    const pick = (r) => (key === 'date' ? r.startsOn : key === 'added' ? r.createdAt : r.amountEur);
+    const x = pick(a); const y = pick(b);
     if (x == null && y == null) return a.name.localeCompare(b.name, 'fr');
     if (x == null) return 1;
     if (y == null) return -1;
@@ -113,9 +118,14 @@ export async function mount(el) {
     const filtered = filter !== 'all' || hasOpts();
     const fs = filtered ? summarize(trip, shown) : null;
     announceBudget(trip.id, s);
-    const flat = opts.sort !== 'category';
-    const flatItems = flat ? [...shown].sort(cmp(opts.sort.startsWith('date') ? 'date' : 'price', opts.sort.endsWith('Desc') ? -1 : 1)) : [];
-    const groups = flat ? [] : CATEGORIES.map((c) => ({ ...c, items: shown.filter((b) => b.category === c.id) })).filter((g) => g.items.length);
+    const flat = !['category', 'stop'].includes(opts.sort);
+    const sortKey = opts.sort.startsWith('date') ? 'date' : opts.sort.startsWith('added') ? 'added' : 'price';
+    const flatItems = flat ? [...shown].sort(cmp(sortKey, opts.sort.endsWith('Desc') ? -1 : 1)) : [];
+    const stopsByDate = [...stops].sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+    const groups = flat ? [] : opts.sort === 'stop'
+      ? [...stopsByDate.map((s) => ({ id: s.id, label: `${s.name} · ${formatShortDate(s.startDate)} – ${formatShortDate(s.endDate)}`, items: shown.filter((b) => b.stopId === s.id) })),
+        { id: 'none', label: 'Sans mini destination', items: shown.filter((b) => !b.stopId || !stops.some((s) => s.id === b.stopId)) }].filter((g) => g.items.length)
+      : CATEGORIES.map((c) => ({ ...c, items: shown.filter((b) => b.category === c.id) })).filter((g) => g.items.length);
     el.innerHTML = String(html`
       <header class="page-head">
         <div><h1>Réservations</h1><p>${bookings.length} au total pour ce voyage.</p></div>
@@ -141,6 +151,9 @@ export async function mount(el) {
         <section class="card sort-bar" aria-label="Trier et filtrer">
           <div class="field"><label for="f-sort">Trier</label>
             <select class="select" id="f-sort" data-opt="sort">${Object.entries(SORTS).map(([id, label]) => html`<option value="${id}" ${opts.sort === id ? raw('selected') : ''}>${label}</option>`)}</select></div>
+          ${stops.length ? html`<div class="field"><label for="f-stop">Mini destination</label>
+            <select class="select" id="f-stop" data-opt="stop"><option value="all" ${opts.stop === 'all' ? raw('selected') : ''}>Toutes</option><option value="none" ${opts.stop === 'none' ? raw('selected') : ''}>Sans destination</option>
+              ${stops.map((s) => html`<option value="${s.id}" ${opts.stop === s.id ? raw('selected') : ''}>${s.name}</option>`)}</select></div>` : ''}
           <div class="field"><label for="f-from">Du</label><input class="input" id="f-from" type="date" data-opt="from" value="${opts.from}"></div>
           <div class="field"><label for="f-to">Au</label><input class="input" id="f-to" type="date" data-opt="to" value="${opts.to}"></div>
           <div class="field"><label for="f-min">Prix min (€)</label><input class="input" id="f-min" inputmode="decimal" data-opt="min" value="${opts.min}" placeholder="0"></div>
@@ -161,7 +174,8 @@ export async function mount(el) {
   };
 
   const load = async () => {
-    bookings = await api.listBookings(trip.id);
+    [bookings, stops] = await Promise.all([api.listBookings(trip.id), api.listStops(trip.id).catch(() => [])]);
+    if (opts.stop !== 'all' && opts.stop !== 'none' && !stops.some((s) => s.id === opts.stop)) opts.stop = 'all';
     render();
   };
 
@@ -169,7 +183,7 @@ export async function mount(el) {
 
   const openBookingForm = async (existing) => openDialog({
     title: existing ? 'Modifier la réservation' : 'Nouvelle réservation',
-    content: bookingForm(existing, await loadCurrencies(), await api.listStops(trip.id).catch(() => [])),
+    content: bookingForm(existing ?? (opts.stop !== 'all' && opts.stop !== 'none' ? { stopId: opts.stop } : {}), await loadCurrencies(), stops),
     onMount: (dlg) => wireAmountField(dlg, { editing: existing ?? null }),
     submitLabel: existing ? 'Enregistrer' : 'Ajouter',
     onSubmit: async (v) => {
@@ -226,7 +240,7 @@ export async function mount(el) {
   const onClick = (e) => {
     const f = e.target.closest('[data-filter]');
     if (f) { filter = f.dataset.filter; render(); el.querySelector(`[data-filter="${filter}"]`)?.focus(); return; }
-    if (e.target.closest('[data-reset-opts]')) { Object.assign(opts, { from: '', to: '', min: '', max: '' }); render(); return; }
+    if (e.target.closest('[data-reset-opts]')) { Object.assign(opts, { stop: 'all', from: '', to: '', min: '', max: '' }); render(); return; }
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const id = btn.closest('[data-id]')?.dataset.id;
@@ -237,7 +251,7 @@ export async function mount(el) {
       case 'edit': return openBookingForm(b);
       case 'payments': return openPayments(id);
       case 'duplicate':
-        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amount: b.amount, currency: b.currency, location: b.location, startsOn: b.startsOn, endsOn: b.endsOn, sourceUrl: b.sourceUrl })
+        return api.createBooking(trip.id, { name: `${b.name} (copie)`, category: b.category, status: 'a_reserver', amount: b.amount, currency: b.currency, location: b.location, startsOn: b.startsOn, endsOn: b.endsOn, sourceUrl: b.sourceUrl, ...(b.stopId ? { stopId: b.stopId } : {}) })
           .then(() => { toast('Réservation dupliquée (sans paiement).'); return load(); })
           .catch((err) => toast(err.message));
       case 'delete':
