@@ -54,7 +54,7 @@ function reviewStep(result, trips, activeId, currencies, stops = []) {
     : `Prix trouvé : ${pf.amount}, sans devise indiquée. Choisissez la devise et vérifiez le montant.`;
   const prefilled = supported ? html`<span class="found">trouvé sur le site</span>` : '';
   return html`
-    <input type="hidden" name="sourceUrl" value="${result.url}">
+    <div class="field"><label for="i-link">Lien conservé</label><input class="input" id="i-link" name="sourceUrl" type="url" value="${result.url}" maxlength="500"></div>
     <p class="import-summary">${result.found > 0
       ? html`<strong>${result.found} ${result.found > 1 ? 'informations trouvées' : 'information trouvée'}</strong> sur ${result.host}. Vérifiez et complétez.`
       : html`<strong>Aucune information exploitable</strong> sur ${result.host}. Complétez à la main : le lien sera conservé.`}</p>
@@ -162,7 +162,17 @@ export async function openImport({ capture, sharedUrl } = {}) {
       : (dlg) => wirePaste(dlg),
     onSubmit: async (v, dlg) => {
       if (step === 'url') {
-        const result = await api.importUrl(v.url); // les erreurs (captcha, adresse refusée...) s'affichent dans la boîte
+        // Site illisible (captcha, connexion, erreur) : on ne perd pas le lien. Il reste dans la fiche, à compléter à la main.
+        let result;
+        try {
+          result = await api.importUrl(v.url);
+          result.url = v.url; // le lien que vous avez partagé, pas l'adresse finale après redirections
+        } catch (err) {
+          if (!/^https?:\/\//i.test(v.url)) throw err; // pas une adresse web : on garde l'erreur
+          let host = 'ce site';
+          try { host = new URL(v.url).hostname.replace(/^www\./, ''); } catch { /* adresse déjà validée côté serveur */ }
+          result = { url: v.url, host, found: 0, priceFound: null, fields: { name: host, location: null, category: null, startDate: null, endDate: null }, sources: {}, warnings: [`${err.message} Le lien est conservé : complétez les informations à la main.`] };
+        }
         const stops = await loadStops(activeId);
         dlg.querySelector('.dialog-body').innerHTML = String(reviewStep(result, trips, activeId, currencies, stops));
         wireTrip(dlg, result.fields);
