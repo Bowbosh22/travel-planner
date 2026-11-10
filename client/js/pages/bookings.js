@@ -154,7 +154,7 @@ export async function mount(el) {
           ${stops.length ? html`<div class="field"><label for="f-stop">Mini destination</label>
             <select class="select" id="f-stop" data-opt="stop"><option value="all" ${opts.stop === 'all' ? raw('selected') : ''}>Toutes</option><option value="none" ${opts.stop === 'none' ? raw('selected') : ''}>Sans destination</option>
               ${stops.map((s) => html`<option value="${s.id}" ${opts.stop === s.id ? raw('selected') : ''}>${s.name}</option>`)}</select></div>` : ''}
-          <div class="field"><label for="f-from">Du</label><input class="input" id="f-from" type="date" data-opt="from" value="${opts.from}"></div>
+          <div class="field"><label for="f-from">Du</label><input class="input" id="f-from" type="date" data-dp-seed="${trip.startDate ?? ''}" data-opt="from" value="${opts.from}"></div>
           <div class="field"><label for="f-to">Au</label><input class="input" id="f-to" type="date" data-opt="to" value="${opts.to}"></div>
           <div class="field"><label for="f-min">Prix min (€)</label><input class="input" id="f-min" inputmode="decimal" data-opt="min" value="${opts.min}" placeholder="0"></div>
           <div class="field"><label for="f-max">Prix max (€)</label><input class="input" id="f-max" inputmode="decimal" data-opt="max" value="${opts.max}" placeholder="∞"></div>
@@ -184,7 +184,7 @@ export async function mount(el) {
   const openBookingForm = async (existing) => openDialog({
     title: existing ? 'Modifier la réservation' : 'Nouvelle réservation',
     content: bookingForm(existing ?? (opts.stop !== 'all' && opts.stop !== 'none' ? { stopId: opts.stop } : {}), await loadCurrencies(), stops),
-    onMount: (dlg) => wireAmountField(dlg, { editing: existing ?? null }),
+    onMount: (dlg) => { wireAmountField(dlg, { editing: existing ?? null }); dlg.querySelector('#b-start').dataset.dpSeed = trip.startDate ?? ''; },
     submitLabel: existing ? 'Enregistrer' : 'Ajouter',
     onSubmit: async (v) => {
       if (existing) await api.updateBooking(existing.id, payload(v));

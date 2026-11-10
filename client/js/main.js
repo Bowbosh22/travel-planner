@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { applyTheme, setTheme, watchSystemTheme } from './theme.js';
 import { renderSidebar, renderTabbar, openMoreSheet, closeSheet } from './components/nav-ui.js';
 import { openImport } from './components/import-flow.js';
+import { initDatePickers } from './components/date-picker.js';
 import * as dashboard from './pages/dashboard.js';
 import * as trips from './pages/trips.js';
 import * as bookings from './pages/bookings.js';
@@ -146,6 +147,7 @@ window.addEventListener('unauthorized', () => {
 });
 
 applyTheme();
+initDatePickers();
 watchSystemTheme();
 // Préchargement : au survol (ou au toucher) d'un onglet, on demande déjà les voyages et les réservations du voyage affiché.
 const prefetch = () => { if (!user) return; api.listTrips().then((t) => { const id = getActiveTripId() ?? t[0]?.id; if (id && t.some((x) => x.id === id)) return api.listBookings(id); }).catch(() => {}); };

@@ -739,3 +739,32 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 @media (max-width: 640px) { .sort-bar { grid-template-columns: 1fr 1fr; } .sort-bar .field:first-child { grid-column: 1 / -1; } }
 
 .badge-stop { background: var(--soft); color: var(--soft-text); margin-left: 6px; }
+
+/* Calendrier de dates (style Airbnb / Agoda) */
+.date-native { position: absolute !important; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }
+.field { position: relative; }
+.date-btn { display: flex; align-items: center; text-align: left; cursor: pointer; font: inherit; color: var(--text); }
+.date-btn.is-empty { color: var(--muted); }
+.dp-panel { grid-column: 1 / -1; width: 100%; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22); }
+.dp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.dp-sum { flex: 1; text-align: center; font-size: 14px; }
+.dp-nav { width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 50%; background: transparent; color: var(--text); font-size: 20px; line-height: 1; cursor: pointer; }
+.dp-nav:hover { background: var(--hover); }
+.dp-months { display: grid; grid-template-columns: 1fr; gap: 24px; }
+.dp-months.is-two { grid-template-columns: 1fr 1fr; }
+.dp-title { text-align: center; font-weight: 800; text-transform: capitalize; margin-bottom: 8px; }
+.dp-week, .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.dp-week span { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 4px 0; }
+.dp-day { position: relative; isolation: isolate; height: 40px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 0; }
+.dp-day::after { content: ''; position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; transform: translate(-50%, -50%); border-radius: 50%; z-index: -1; }
+.dp-day:hover:not(.is-edge)::after { background: var(--hover); }
+.dp-day.in-range { background: var(--soft); color: var(--soft-text); }
+.dp-day.is-edge { color: var(--on-accent); }
+.dp-day.is-edge::after { background: var(--accent-strong); }
+.dp-day.is-first::before, .dp-day.is-last::before { content: ''; position: absolute; top: 0; bottom: 0; width: 50%; background: var(--soft); z-index: -2; }
+.dp-day.is-first::before { right: 0; }
+.dp-day.is-last::before { left: 0; }
+.dp-day.is-today:not(.is-edge)::after { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.dp-day:focus-visible { outline: none; }
+.dp-day:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
