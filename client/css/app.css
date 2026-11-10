@@ -786,3 +786,7 @@ textarea.input { height: auto; min-height: 120px; padding: 12px 14px; resize: ve
 
 .name-link { color: inherit; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
 .name-link:hover { text-decoration-color: currentColor; }
+
+/* Widgets de l'accueil qui ouvrent leur onglet */
+.dash-grid:not(.editing) > [data-w="budget"], .dash-grid:not(.editing) > [data-w="categories"], .dash-grid:not(.editing) > [data-w="paid"], .dash-grid:not(.editing) > [data-w="alerts"], .dash-grid:not(.editing) > [data-w="upcoming"], .dash-grid:not(.editing) > [data-w="stops"] { cursor: pointer; transition: transform .12s ease, border-color .12s ease; }
+.dash-grid:not(.editing) > [data-w="budget"]:hover, .dash-grid:not(.editing) > [data-w="categories"]:hover, .dash-grid:not(.editing) > [data-w="paid"]:hover, .dash-grid:not(.editing) > [data-w="alerts"]:hover, .dash-grid:not(.editing) > [data-w="upcoming"]:hover { border-color: var(--accent); }

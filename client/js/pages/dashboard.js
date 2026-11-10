@@ -33,6 +33,9 @@ const WEATHER_ICONS = {
   storm: '<path d="M7 14h10a4 4 0 100-8 5.5 5.5 0 00-10.6 1.3A3.4 3.4 0 007 14z"/><path d="M12 14l-2 4h3l-2 4"/>',
 };
 const weatherIcon = (kind) => `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WEATHER_ICONS[kind] ?? WEATHER_ICONS.cloud}</svg>`;
+// Widget de l'accueil → onglet correspondant (les widgets sans onglet, comme la météo ou les voyageurs, ne bougent pas).
+const WIDGET_ROUTE = { budget: '#/budget', categories: '#/budget', paid: '#/budget', alerts: '#/budget', upcoming: '#/reservations', stops: '#/etapes' };
+
 const creditText = (p) => (p.source === 'unsplash' ? `Photo : ${p.author} / Unsplash` : 'Photo : Wikipédia');
 const todayLong = () => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
@@ -269,6 +272,8 @@ export async function mount(el, { user }) {
     if (mv) { view = mv.dataset.mapView; redraw(); return; }
     if (e.target.closest('#dash-map') || e.target.closest('[data-map-open]')) { openBig(); return; }
     if (e.target.closest('[data-action="import"]')) return openImport();
+    const w = e.target.closest('[data-w]');
+    if (w && WIDGET_ROUTE[w.dataset.w] && !layoutEditor.isEditing() && !e.target.closest('a, button, input, select, textarea, label, summary') && !window.getSelection?.()?.toString()) { location.hash = WIDGET_ROUTE[w.dataset.w]; return; }
     const find = e.target.closest('[data-action="find-image"]');
     if (find) {
       find.disabled = true; find.textContent = 'Recherche…';
